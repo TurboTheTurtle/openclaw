@@ -4,6 +4,16 @@ import type {
   EmbeddingProviderId,
   EmbeddingProviderRequest,
 } from "./embedding-runtime-types.js";
+import { listExtensionHostEmbeddingRuntimeBackendCatalogEntries } from "./runtime-backend-catalog.js";
+import { resolveExtensionHostRuntimeBackendIdsByPolicy } from "./runtime-backend-policy.js";
+
+export function listExtensionHostEmbeddingRemoteRuntimeBackendIds(): readonly EmbeddingProviderId[] {
+  return resolveExtensionHostRuntimeBackendIdsByPolicy({
+    entries: listExtensionHostEmbeddingRuntimeBackendCatalogEntries(),
+    subsystemId: "embedding",
+    include: (entry) => entry.backendId !== "local" && entry.metadata?.autoSelectable === true,
+  }).map((backendId) => backendId as EmbeddingProviderId);
+}
 
 export function resolveExtensionHostEmbeddingFallbackPolicy(params: {
   requestedProvider: EmbeddingProviderRequest | EmbeddingProviderId;

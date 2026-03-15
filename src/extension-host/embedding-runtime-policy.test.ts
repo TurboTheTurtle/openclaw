@@ -1,10 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  listExtensionHostEmbeddingRemoteRuntimeBackendIds,
   resolveExtensionHostEmbeddingFallbackModel,
   resolveExtensionHostEmbeddingFallbackPolicy,
 } from "./embedding-runtime-policy.js";
 
 describe("embedding-runtime-policy", () => {
+  it("uses the shared runtime-backend policy for remote auto-provider order", () => {
+    expect(listExtensionHostEmbeddingRemoteRuntimeBackendIds()).toEqual([
+      "openai",
+      "gemini",
+      "voyage",
+      "mistral",
+    ]);
+  });
+
   it("returns null when fallback is disabled or would repeat the requested provider", () => {
     expect(
       resolveExtensionHostEmbeddingFallbackPolicy({

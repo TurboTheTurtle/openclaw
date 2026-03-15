@@ -6,7 +6,10 @@ const listExtensionHostEmbeddingRemoteRuntimeBackendIds = vi.hoisted(() =>
 const createGeminiEmbeddingProvider = vi.hoisted(() => vi.fn());
 const createOpenAiEmbeddingProvider = vi.hoisted(() => vi.fn());
 
-vi.mock("./runtime-backend-catalog.js", () => ({
+vi.mock("./embedding-runtime-policy.js", async () => ({
+  ...(await vi.importActual<typeof import("./embedding-runtime-policy.js")>(
+    "./embedding-runtime-policy.js",
+  )),
   listExtensionHostEmbeddingRemoteRuntimeBackendIds,
 }));
 

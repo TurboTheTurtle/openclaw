@@ -5,7 +5,6 @@ import {
   EXTENSION_HOST_EMBEDDING_RUNTIME_BACKEND_IDS,
   isExtensionHostEmbeddingRuntimeBackendAutoSelectable,
 } from "./embedding-runtime-backends.js";
-import type { EmbeddingProviderId } from "./embedding-runtime-types.js";
 import {
   buildExtensionHostMediaRuntimeSelectorKeys,
   listExtensionHostMediaAutoRuntimeBackendSeedIds,
@@ -81,14 +80,6 @@ export function listExtensionHostEmbeddingRuntimeBackendCatalogEntries(): readon
       defaultModel: resolveExtensionHostEmbeddingRuntimeDefaultModel(backendId),
     },
   }));
-}
-
-export function listExtensionHostEmbeddingRemoteRuntimeBackendIds(): readonly EmbeddingProviderId[] {
-  return listExtensionHostRuntimeBackendIdsByArbitration({
-    entries: listExtensionHostEmbeddingRuntimeBackendCatalogEntries(),
-    subsystemId: "embedding",
-    include: (entry) => entry.backendId !== "local" && entry.metadata?.autoSelectable === true,
-  }).map((entry) => entry as EmbeddingProviderId);
 }
 
 export function listExtensionHostMediaRuntimeBackendCatalogEntries(): readonly ExtensionHostRuntimeBackendCatalogEntry[] {

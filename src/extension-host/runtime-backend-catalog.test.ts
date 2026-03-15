@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { listExtensionHostEmbeddingRemoteRuntimeBackendIds } from "./embedding-runtime-policy.js";
 
 vi.mock("./embedding-runtime-backends.js", () => ({
   EXTENSION_HOST_EMBEDDING_RUNTIME_BACKEND_IDS: [
@@ -154,7 +155,7 @@ describe("runtime-backend-catalog", () => {
       subsystemId: "tts",
       backendId: "edge",
     });
-    expect(catalog.listExtensionHostEmbeddingRemoteRuntimeBackendIds()).toEqual([
+    expect(listExtensionHostEmbeddingRemoteRuntimeBackendIds()).toEqual([
       "openai",
       "gemini",
       "voyage",
