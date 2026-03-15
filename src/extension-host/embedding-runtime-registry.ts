@@ -25,16 +25,14 @@ import {
 } from "../memory/embeddings-voyage.js";
 import { importNodeLlamaCpp } from "../memory/node-llama.js";
 import { resolveUserPath } from "../utils.js";
-import {
-  DEFAULT_EXTENSION_HOST_LOCAL_EMBEDDING_MODEL,
-  EXTENSION_HOST_REMOTE_EMBEDDING_PROVIDER_IDS,
-} from "./embedding-runtime-backends.js";
+import { DEFAULT_EXTENSION_HOST_LOCAL_EMBEDDING_MODEL } from "./embedding-runtime-backends.js";
 import type {
   EmbeddingProvider,
   EmbeddingProviderId,
   EmbeddingProviderOptions,
   EmbeddingProviderResult,
 } from "./embedding-runtime-types.js";
+import { listExtensionHostEmbeddingRemoteRuntimeBackendIds } from "./runtime-backend-catalog.js";
 
 export type {
   GeminiEmbeddingClient,
@@ -192,7 +190,7 @@ export async function createExtensionHostEmbeddingProvider(
       }
     }
 
-    for (const provider of EXTENSION_HOST_REMOTE_EMBEDDING_PROVIDER_IDS) {
+    for (const provider of listExtensionHostEmbeddingRemoteRuntimeBackendIds()) {
       try {
         const result = await createExtensionHostEmbeddingProviderById(provider, options);
         return { ...result, requestedProvider };
@@ -292,7 +290,7 @@ export function formatExtensionHostLocalEmbeddingSetupError(err: unknown): strin
       ? "2) Reinstall OpenClaw (this should install node-llama-cpp): npm i -g openclaw@latest"
       : null,
     "3) If you use pnpm: pnpm approve-builds (select node-llama-cpp), then pnpm rebuild node-llama-cpp",
-    ...EXTENSION_HOST_REMOTE_EMBEDDING_PROVIDER_IDS.map(
+    ...listExtensionHostEmbeddingRemoteRuntimeBackendIds().map(
       (provider) => `Or set agents.defaults.memorySearch.provider = "${provider}" (remote).`,
     ),
   ]
