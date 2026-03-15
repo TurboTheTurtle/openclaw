@@ -41,16 +41,16 @@ What has been implemented:
 - the first runtime registration normalization helpers now exist in `src/extension-host/runtime-registrations.ts` for channel, provider, HTTP-route, gateway-method, tool, CLI, service, command, context-engine, and hook writes
 - low-risk runtime compatibility writes for channel, provider, gateway-method, HTTP-route, tool, CLI, service, command, context-engine, and hook registrations now route through `src/extension-host/registry-writes.ts`
 - context-engine registration and runtime resolution now route through `src/extension-host/context-engine-runtime.ts` while `src/context-engine/registry.ts` remains the compatibility facade
-- exclusive-slot selection and default-slot resolution now route through `src/extension-host/slot-arbitration.ts` while `src/plugins/slots.ts` remains the compatibility facade
+- exclusive-slot selection and default-slot resolution now route through `src/extension-host/policy/slot-arbitration.ts` while `src/plugins/slots.ts` remains the compatibility facade
 - ACP backend registration and runtime resolution now route through `src/extension-host/acp-runtime-backend-registry.ts` while `src/acp/runtime/registry.ts` remains the compatibility facade
-- embedding-provider auto-selection, provider creation, local-setup guidance, and primary plus fallback routing now route through `src/extension-host/embedding-runtime-registry.ts`, shared fallback-model selection now routes through `src/extension-host/embedding-runtime-policy.ts`, the public embedding runtime surface and result typing now route through `src/extension-host/embedding-runtime.ts` and `src/extension-host/embedding-runtime-types.ts`, manager-side batch policy plus fallback activation now route through `src/extension-host/embedding-manager-runtime.ts`, sync plus reindex planning now route through `src/extension-host/embedding-sync-planning.ts`, sync plus reindex orchestration now route through `src/extension-host/embedding-sync-execution.ts`, reindex sync-body execution plus unsafe reset now route through `src/extension-host/embedding-reindex-execution.ts`, and safe-reindex temp-db creation, file swap, reopen, and cleanup now route through `src/extension-host/embedding-safe-reindex.ts` while `src/memory/embeddings.ts` remains the compatibility facade
-- built-in media backend definitions, provider normalization, auto-selection seed order, selector-key shaping, and default-model metadata now route through `src/extension-host/media-runtime-backends.ts`; override merging and runtime lookup now route through `src/extension-host/media-runtime-registry.ts`; shared default and preferred runtime-backend ordering plus fallback chaining now route through `src/extension-host/runtime-backend-policy.ts`; provider candidate ordering, active-model precedence, and default-model fallback selection now route through `src/extension-host/media-runtime-policy.ts`; provider and CLI entry execution, output parsing, provider query normalization, provider auth/context shaping, and proxy-aware fetch handling now route through `src/extension-host/media-runtime-execution.ts`; local-binary probing, auto-entry selection, and top-level capability orchestration now route through `src/extension-host/media-runtime-auto.ts` and `src/extension-host/media-runtime-orchestration.ts`; and media prompt, timeout, scope, model-entry, concurrency, and decision helpers now route through `src/extension-host/media-runtime-config.ts` and `src/extension-host/media-runtime-decision.ts` while `src/media-understanding/providers/index.ts`, `src/media-understanding/runner.ts`, `src/media-understanding/runner.entries.ts`, and `src/media-understanding/resolve.ts` remain compatibility facades
+- embedding-provider auto-selection, provider creation, local-setup guidance, and primary plus fallback routing now route through `src/extension-host/embedding-runtime-registry.ts`, shared fallback-model selection now routes through `src/extension-host/policy/embedding-runtime-policy.ts`, the public embedding runtime surface and result typing now route through `src/extension-host/embedding-runtime.ts` and `src/extension-host/embedding-runtime-types.ts`, manager-side batch policy plus fallback activation now route through `src/extension-host/embedding-manager-runtime.ts`, sync plus reindex planning now route through `src/extension-host/embedding-sync-planning.ts`, sync plus reindex orchestration now route through `src/extension-host/embedding-sync-execution.ts`, reindex sync-body execution plus unsafe reset now route through `src/extension-host/embedding-reindex-execution.ts`, and safe-reindex temp-db creation, file swap, reopen, and cleanup now route through `src/extension-host/embedding-safe-reindex.ts` while `src/memory/embeddings.ts` remains the compatibility facade
+- built-in media backend definitions, provider normalization, auto-selection seed order, selector-key shaping, and default-model metadata now route through `src/extension-host/media-runtime-backends.ts`; override merging and runtime lookup now route through `src/extension-host/media-runtime-registry.ts`; shared default and preferred runtime-backend ordering plus fallback chaining now route through `src/extension-host/policy/runtime-backend-policy.ts`; provider candidate ordering, active-model precedence, and default-model fallback selection now route through `src/extension-host/policy/media-runtime-policy.ts`; provider and CLI entry execution, output parsing, provider query normalization, provider auth/context shaping, and proxy-aware fetch handling now route through `src/extension-host/media-runtime-execution.ts`; local-binary probing, auto-entry selection, and top-level capability orchestration now route through `src/extension-host/media-runtime-auto.ts` and `src/extension-host/media-runtime-orchestration.ts`; and media prompt, timeout, scope, model-entry, concurrency, and decision helpers now route through `src/extension-host/media-runtime-config.ts` and `src/extension-host/media-runtime-decision.ts` while `src/media-understanding/providers/index.ts`, `src/media-understanding/runner.ts`, `src/media-understanding/runner.entries.ts`, and `src/media-understanding/resolve.ts` remain compatibility facades
 - TTS provider metadata, provider ordering, API-key resolution, configuration checks, and telephony support now route through `src/extension-host/tts-runtime-registry.ts`, provider execution loops, output-format selection, telephony synthesis, and provider-error shaping now route through `src/extension-host/tts-runtime-execution.ts`, provider selection plus request setup now route through `src/extension-host/tts-runtime-setup.ts`, TTS config normalization, defaults, and model-override policy now route through `src/extension-host/tts-config.ts`, prefs-path resolution, auto-mode policy, and persisted TTS preference reads and writes now route through `src/extension-host/tts-preferences.ts`, auto-TTS gating, directive cleanup, truncation, summarization, and payload planning now route through `src/extension-host/tts-payload.ts`, and last-attempt state plus shared status snapshots now route through `src/extension-host/tts-status.ts` while `src/tts/tts.ts` remains the compatibility facade
-- legacy internal-hook bridging and typed prompt-injection compatibility policy now route through `src/extension-host/hook-compat.ts`
-- compatibility `OpenClawPluginApi` composition and logger shaping now route through `src/extension-host/plugin-api.ts`
-- compatibility plugin-registry facade ownership now routes through `src/extension-host/plugin-registry.ts`
-- compatibility plugin-registry policy now routes through `src/extension-host/plugin-registry-compat.ts`
-- compatibility plugin-registry registration actions now route through `src/extension-host/plugin-registry-registrations.ts`
+- legacy internal-hook bridging and typed prompt-injection compatibility policy now route through `src/extension-host/compat/hook-compat.ts`
+- compatibility `OpenClawPluginApi` composition and logger shaping now route through `src/extension-host/compat/plugin-api.ts`
+- compatibility plugin-registry facade ownership now routes through `src/extension-host/compat/plugin-registry.ts`
+- compatibility plugin-registry policy now routes through `src/extension-host/compat/plugin-registry-compat.ts`
+- compatibility plugin-registry registration actions now route through `src/extension-host/compat/plugin-registry-registrations.ts`
 - service startup, stop ordering, service-context creation, and failure logging now route through `src/extension-host/service-lifecycle.ts`
 - CLI duplicate detection, registrar invocation, and async failure logging now route through `src/extension-host/cli-lifecycle.ts`
 - gateway method-id aggregation, plugin diagnostic shaping, and extra-handler composition now route through `src/extension-host/gateway-methods.ts`
@@ -64,30 +64,30 @@ What has been implemented:
 - provider onboarding option building, model-picker entry building, and provider-method choice resolution now route through `src/extension-host/provider-wizard.ts`
 - loaded-provider auth application, plugin-enable gating, auth-method execution, and post-auth default-model handling now route through `src/extension-host/provider-auth-flow.ts`
 - provider post-selection hook lookup and invocation now route through `src/extension-host/provider-model-selection.ts`
-- plugin SDK alias resolution now routes through `src/extension-host/loader-compat.ts`
-- loader alias-wired module loader creation now routes through `src/extension-host/loader-module-loader.ts`
-- loader cache key construction and registry cache control now route through `src/extension-host/loader-cache.ts`
-- loader lazy runtime proxy creation now routes through `src/extension-host/loader-runtime-proxy.ts`
-- loader provenance helpers now route through `src/extension-host/loader-provenance.ts`
-- loader duplicate-order and record/error policy now route through `src/extension-host/loader-policy.ts`
-- loader discovery policy outcomes now route through `src/extension-host/loader-discovery-policy.ts`
-- loader initial candidate planning and record creation now route through `src/extension-host/loader-records.ts`
-- loader entry-path opening and module import now route through `src/extension-host/loader-import.ts`
-- loader module-export resolution, config validation, and memory-slot load decisions now route through `src/extension-host/loader-runtime.ts`
-- loader post-import planning and `register(...)` execution now route through `src/extension-host/loader-register.ts`
-- loader per-candidate orchestration now routes through `src/extension-host/loader-flow.ts`
-- loader top-level load orchestration now routes through `src/extension-host/loader-orchestrator.ts`
-- loader host process state now routes through `src/extension-host/loader-host-state.ts`
-- loader preflight and cache-hit setup now routes through `src/extension-host/loader-preflight.ts`
-- loader post-preflight pipeline composition now routes through `src/extension-host/loader-pipeline.ts`
-- loader execution setup composition now routes through `src/extension-host/loader-execution.ts`
-- loader discovery and manifest bootstrap now routes through `src/extension-host/loader-bootstrap.ts`
-- loader mutable activation state now routes through `src/extension-host/loader-session.ts`
-- loader session run and finalization composition now routes through `src/extension-host/loader-run.ts`
-- loader activation policy outcomes now route through `src/extension-host/loader-activation-policy.ts`
-- loader record-state transitions now route through `src/extension-host/loader-state.ts`, which now enforces an explicit loader lifecycle state machine while preserving compatibility `PluginRecord.status` values
-- loader finalization policy results now route through `src/extension-host/loader-finalization-policy.ts`
-- loader final cache, readiness promotion, and activation finalization now routes through `src/extension-host/loader-finalize.ts`
+- plugin SDK alias resolution now routes through `src/extension-host/compat/loader-compat.ts`
+- loader alias-wired module loader creation now routes through `src/extension-host/activation/loader-module-loader.ts`
+- loader cache key construction and registry cache control now route through `src/extension-host/activation/loader-cache.ts`
+- loader lazy runtime proxy creation now routes through `src/extension-host/activation/loader-runtime-proxy.ts`
+- loader provenance helpers now route through `src/extension-host/policy/loader-provenance.ts`
+- loader duplicate-order and record/error policy now route through `src/extension-host/policy/loader-policy.ts`
+- loader discovery policy outcomes now route through `src/extension-host/policy/loader-discovery-policy.ts`
+- loader initial candidate planning and record creation now route through `src/extension-host/activation/loader-records.ts`
+- loader entry-path opening and module import now route through `src/extension-host/activation/loader-import.ts`
+- loader module-export resolution, config validation, and memory-slot load decisions now route through `src/extension-host/activation/loader-runtime.ts`
+- loader post-import planning and `register(...)` execution now route through `src/extension-host/activation/loader-register.ts`
+- loader per-candidate orchestration now routes through `src/extension-host/activation/loader-flow.ts`
+- loader top-level load orchestration now routes through `src/extension-host/activation/loader-orchestrator.ts`
+- loader host process state now routes through `src/extension-host/activation/loader-host-state.ts`
+- loader preflight and cache-hit setup now routes through `src/extension-host/activation/loader-preflight.ts`
+- loader post-preflight pipeline composition now routes through `src/extension-host/activation/loader-pipeline.ts`
+- loader execution setup composition now routes through `src/extension-host/activation/loader-execution.ts`
+- loader discovery and manifest bootstrap now routes through `src/extension-host/activation/loader-bootstrap.ts`
+- loader mutable activation state now routes through `src/extension-host/activation/loader-session.ts`
+- loader session run and finalization composition now routes through `src/extension-host/activation/loader-run.ts`
+- loader activation policy outcomes now route through `src/extension-host/policy/loader-activation-policy.ts`
+- loader record-state transitions now route through `src/extension-host/activation/loader-state.ts`, which now enforces an explicit loader lifecycle state machine while preserving compatibility `PluginRecord.status` values
+- loader finalization policy results now route through `src/extension-host/policy/loader-finalization-policy.ts`
+- loader final cache, readiness promotion, and activation finalization now routes through `src/extension-host/activation/loader-finalize.ts`
 
 How it has been implemented:
 
@@ -108,7 +108,7 @@ How it has been implemented:
 - by extracting post-preflight execution setup and session-run composition into a host-owned loader-pipeline helper before broadening the schema-driven host lifecycle model
 - by extracting runtime creation, registry creation, bootstrap setup, module-loader creation, and session creation into a host-owned loader-execution helper before broadening the schema-driven host lifecycle model
 - by moving mutable activation state into a host-owned loader session before broadening the schema-driven host lifecycle model
-- by extracting shared provenance path matching and install-rule evaluation into `src/extension-host/loader-provenance.ts` so activation and finalization policy seams reuse one host-owned implementation
+- by extracting shared provenance path matching and install-rule evaluation into `src/extension-host/policy/loader-provenance.ts` so activation and finalization policy seams reuse one host-owned implementation
 - by turning open-allowlist discovery warnings into explicit host-owned discovery-policy results before broadening the schema-driven host lifecycle model
 - by moving duplicate precedence, config enablement, and early memory-slot gating into explicit host-owned activation-policy outcomes before broadening the schema-driven host lifecycle model
 - by turning provenance-based untracked-extension warnings and final memory-slot warnings into explicit host-owned finalization-policy results before broadening the schema-driven host lifecycle model
