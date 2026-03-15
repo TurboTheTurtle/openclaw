@@ -12,10 +12,7 @@ import {
   normalizeExtensionHostMediaProviderId,
   resolveExtensionHostMediaRuntimeDefaultModelMetadata,
 } from "./media-runtime-backends.js";
-import {
-  listExtensionHostRuntimeBackendIdsByArbitration,
-  resolveExtensionHostRuntimeBackendOrderByArbitration,
-} from "./runtime-backend-arbitration.js";
+import { resolveExtensionHostRuntimeBackendIdsByPolicy } from "./runtime-backend-policy.js";
 import { listExtensionHostTtsRuntimeBackends } from "./tts-runtime-backends.js";
 
 export const EXTENSION_HOST_RUNTIME_BACKEND_FAMILY = "capability.runtime-backend";
@@ -116,7 +113,7 @@ export function listExtensionHostMediaAutoRuntimeBackendIds(
   capability: MediaUnderstandingCapability,
 ): readonly string[] {
   const subsystemId = mapMediaCapabilityToSubsystem(capability);
-  return listExtensionHostRuntimeBackendIdsByArbitration({
+  return resolveExtensionHostRuntimeBackendIdsByPolicy({
     entries: listExtensionHostMediaRuntimeBackendCatalogEntries(),
     subsystemId,
     include: (entry) => entry.metadata?.autoSelectable === true,
@@ -163,7 +160,7 @@ export function listExtensionHostTtsRuntimeBackendIds(): readonly TtsProvider[] 
 export function listExtensionHostRuntimeBackendIdsForSubsystem(
   subsystemId: ExtensionHostRuntimeBackendSubsystemId,
 ): readonly string[] {
-  return listExtensionHostRuntimeBackendIdsByArbitration({
+  return resolveExtensionHostRuntimeBackendIdsByPolicy({
     entries: listExtensionHostRuntimeBackendCatalogEntries(),
     subsystemId,
   });
@@ -173,7 +170,7 @@ export function resolveExtensionHostRuntimeBackendOrderForSubsystem(
   subsystemId: ExtensionHostRuntimeBackendSubsystemId,
   preferredBackendId: string,
 ): readonly string[] {
-  return resolveExtensionHostRuntimeBackendOrderByArbitration({
+  return resolveExtensionHostRuntimeBackendIdsByPolicy({
     entries: listExtensionHostRuntimeBackendCatalogEntries(),
     subsystemId,
     preferredBackendId,
