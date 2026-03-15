@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { TtsProvider } from "../config/types.tts.js";
-import { resolveExtensionHostTtsRuntimeBackendOrder } from "./runtime-backend-catalog.js";
 import type { ResolvedTtsConfig } from "./tts-config.js";
-import { resolveExtensionHostTtsApiKey } from "./tts-runtime-registry.js";
+import {
+  resolveExtensionHostDefaultTtsProvider,
+  resolveExtensionHostTtsFallbackProviders,
+} from "./tts-runtime-policy.js";
 
 type TtsUserPrefs = {
   tts?: {
@@ -35,13 +37,7 @@ export function resolveExtensionHostTtsProvider(
     return config.provider;
   }
 
-  if (resolveExtensionHostTtsApiKey(config, "openai")) {
-    return "openai";
-  }
-  if (resolveExtensionHostTtsApiKey(config, "elevenlabs")) {
-    return "elevenlabs";
-  }
-  return "edge";
+  return resolveExtensionHostDefaultTtsProvider(config);
 }
 
 export function resolveExtensionHostTtsRequestSetup(params: {
@@ -67,6 +63,11 @@ export function resolveExtensionHostTtsRequestSetup(params: {
     params.providerOverride ?? resolveExtensionHostTtsProvider(params.config, params.prefsPath);
   return {
     config: params.config,
-    providers: [...resolveExtensionHostTtsRuntimeBackendOrder(provider)],
+    providers: [
+      ...resolveExtensionHostTtsFallbackProviders({
+        config: params.config,
+        preferredProvider: provider,
+      }),
+    ],
   };
 }

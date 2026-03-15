@@ -15,6 +15,38 @@ vi.mock("./runtime-backend-catalog.js", () => ({
       (candidate, index, items) => items.indexOf(candidate) === index,
     ),
   ),
+  listExtensionHostTtsRuntimeBackendCatalogEntries: vi.fn(() => [
+    {
+      id: "capability.runtime-backend:tts:openai",
+      family: "capability.runtime-backend",
+      subsystemId: "tts",
+      backendId: "openai",
+      source: "builtin",
+      defaultRank: 0,
+      selectorKeys: ["openai"],
+      capabilities: ["tts.synthesis", "tts.telephony"],
+    },
+    {
+      id: "capability.runtime-backend:tts:elevenlabs",
+      family: "capability.runtime-backend",
+      subsystemId: "tts",
+      backendId: "elevenlabs",
+      source: "builtin",
+      defaultRank: 1,
+      selectorKeys: ["elevenlabs"],
+      capabilities: ["tts.synthesis", "tts.telephony"],
+    },
+    {
+      id: "capability.runtime-backend:tts:edge",
+      family: "capability.runtime-backend",
+      subsystemId: "tts",
+      backendId: "edge",
+      source: "builtin",
+      defaultRank: 2,
+      selectorKeys: ["edge"],
+      capabilities: ["tts.synthesis"],
+    },
+  ]),
 }));
 
 const tempDirs: string[] = [];
@@ -114,7 +146,7 @@ describe("tts-runtime-setup", () => {
     });
   });
 
-  it("uses the override provider to build the host-owned fallback order", () => {
+  it("uses the override provider to build the host-owned configured fallback order", () => {
     const config = createResolvedConfig({
       provider: "edge",
       providerSource: "config",
@@ -130,7 +162,7 @@ describe("tts-runtime-setup", () => {
       }),
     ).toEqual({
       config,
-      providers: ["elevenlabs", "openai", "edge"],
+      providers: ["elevenlabs", "edge"],
     });
   });
 });

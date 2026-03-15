@@ -43,3 +43,22 @@ export function resolveExtensionHostRuntimeBackendOrderByArbitration(params: {
     ...ordered.filter((backendId) => backendId !== params.preferredBackendId),
   ];
 }
+
+export function resolveExtensionHostRuntimeBackendFallbackChainByArbitration(params: {
+  entries: readonly ExtensionHostRuntimeBackendCatalogEntry[];
+  subsystemId: ExtensionHostRuntimeBackendSubsystemId;
+  preferredBackendId: string;
+  include?: ExtensionHostRuntimeBackendArbitrationPredicate;
+}): readonly string[] {
+  return resolveExtensionHostRuntimeBackendOrderByArbitration(params);
+}
+
+export function resolveExtensionHostDefaultRuntimeBackendIdByArbitration(params: {
+  entries: readonly ExtensionHostRuntimeBackendCatalogEntry[];
+  subsystemId: ExtensionHostRuntimeBackendSubsystemId;
+  include?: ExtensionHostRuntimeBackendArbitrationPredicate;
+  fallbackBackendId?: string;
+}): string | undefined {
+  const ordered = listExtensionHostRuntimeBackendIdsByArbitration(params);
+  return ordered[0] ?? params.fallbackBackendId;
+}
