@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { listExtensionHostEmbeddingRemoteRuntimeBackendIds } from "./embedding-runtime-policy.js";
+import { listExtensionHostEmbeddingRemoteRuntimeBackendIds } from "./policy/embedding-runtime-policy.js";
 
 vi.mock("./embedding-runtime-backends.js", () => ({
   EXTENSION_HOST_EMBEDDING_RUNTIME_BACKEND_IDS: [

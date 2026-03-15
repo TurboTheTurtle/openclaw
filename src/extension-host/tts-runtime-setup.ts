@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { TtsProvider } from "../config/types.tts.js";
-import type { ResolvedTtsConfig } from "./tts-config.js";
 import {
   resolveExtensionHostDefaultTtsProvider,
   resolveExtensionHostTtsFallbackProviders,
-} from "./tts-runtime-policy.js";
+} from "./policy/tts-runtime-policy.js";
+import type { ResolvedTtsConfig } from "./tts-config.js";
 
 type TtsUserPrefs = {
   tts?: {

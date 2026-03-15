@@ -1,7 +1,6 @@
 import { resolveAgentDir } from "../agents/agent-scope.js";
 import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import type { OpenClawConfig } from "../config/config.js";
-import { resolveExtensionHostEmbeddingFallbackPolicy } from "./embedding-runtime-policy.js";
 import {
   createEmbeddingProvider,
   type EmbeddingProvider,
@@ -12,6 +11,7 @@ import {
   type OpenAiEmbeddingClient,
   type VoyageEmbeddingClient,
 } from "./embedding-runtime.js";
+import { resolveExtensionHostEmbeddingFallbackPolicy } from "./policy/embedding-runtime-policy.js";
 
 export type EmbeddingManagerBatchConfig = {
   enabled: boolean;

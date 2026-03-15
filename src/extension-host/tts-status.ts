@@ -1,4 +1,5 @@
 import type { TtsProvider } from "../config/types.tts.js";
+import { resolveExtensionHostTtsFallbackProviders } from "./policy/tts-runtime-policy.js";
 import type { ResolvedTtsConfig } from "./tts-config.js";
 import {
   getExtensionHostTtsMaxLength,
@@ -6,7 +7,6 @@ import {
   isExtensionHostTtsSummarizationEnabled,
   resolveExtensionHostTtsAutoMode,
 } from "./tts-preferences.js";
-import { resolveExtensionHostTtsFallbackProviders } from "./tts-runtime-policy.js";
 import {
   isExtensionHostTtsProviderConfigured,
   resolveExtensionHostTtsApiKey,

@@ -26,16 +26,16 @@ import {
 import { importNodeLlamaCpp } from "../memory/node-llama.js";
 import { resolveUserPath } from "../utils.js";
 import { DEFAULT_EXTENSION_HOST_LOCAL_EMBEDDING_MODEL } from "./embedding-runtime-backends.js";
-import {
-  listExtensionHostEmbeddingRemoteRuntimeBackendIds,
-  resolveExtensionHostEmbeddingFallbackPolicy,
-} from "./embedding-runtime-policy.js";
 import type {
   EmbeddingProvider,
   EmbeddingProviderId,
   EmbeddingProviderOptions,
   EmbeddingProviderResult,
 } from "./embedding-runtime-types.js";
+import {
+  listExtensionHostEmbeddingRemoteRuntimeBackendIds,
+  resolveExtensionHostEmbeddingFallbackPolicy,
+} from "./policy/embedding-runtime-policy.js";
 
 export type {
   GeminiEmbeddingClient,

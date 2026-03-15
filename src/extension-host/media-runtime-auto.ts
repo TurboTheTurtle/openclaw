@@ -21,7 +21,7 @@ import { runExec } from "../process/exec.js";
 import {
   resolveExtensionHostMediaProviderCandidates,
   type ExtensionHostMediaActiveModel,
-} from "./media-runtime-policy.js";
+} from "./policy/media-runtime-policy.js";
 
 export type ActiveMediaModel = {
   provider: string;

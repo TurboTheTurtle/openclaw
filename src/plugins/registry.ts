@@ -1,6 +1,6 @@
 import type { ChannelDock } from "../channels/dock.js";
 import type { ChannelPlugin } from "../channels/plugins/types.js";
-import { createExtensionHostPluginRegistry } from "../extension-host/plugin-registry.js";
+import { createExtensionHostPluginRegistry } from "../extension-host/compat/plugin-registry.js";
 import type { GatewayRequestHandlers } from "../gateway/server-methods/types.js";
 import type { HookEntry } from "../hooks/types.js";
 import type { PluginRuntime } from "./runtime/types.js";

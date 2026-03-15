@@ -33,7 +33,7 @@ vi.mock("../memory/backend-config.js", () => ({
   resolveMemoryBackendConfig,
 }));
 
-vi.mock("../extension-host/embedding-runtime-policy.js", () => ({
+vi.mock("../extension-host/policy/embedding-runtime-policy.js", () => ({
   listExtensionHostEmbeddingRemoteRuntimeBackendIds,
 }));
 

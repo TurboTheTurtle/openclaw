@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "../config/config.js";
 import type { ContextEngine } from "../context-engine/types.js";
-import { getExtensionHostDefaultSlotId } from "./slot-arbitration.js";
+import { getExtensionHostDefaultSlotId } from "./policy/slot-arbitration.js";
 
 export type ExtensionHostContextEngineFactory = () => ContextEngine | Promise<ContextEngine>;
 

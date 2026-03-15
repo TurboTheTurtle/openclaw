@@ -12,7 +12,7 @@ import {
   normalizeExtensionHostMediaProviderId,
   resolveExtensionHostMediaRuntimeDefaultModelMetadata,
 } from "./media-runtime-backends.js";
-import { resolveExtensionHostRuntimeBackendIdsByPolicy } from "./runtime-backend-policy.js";
+import { resolveExtensionHostRuntimeBackendIdsByPolicy } from "./policy/runtime-backend-policy.js";
 import { listExtensionHostTtsRuntimeBackends } from "./tts-runtime-backends.js";
 
 export const EXTENSION_HOST_RUNTIME_BACKEND_FAMILY = "capability.runtime-backend";
