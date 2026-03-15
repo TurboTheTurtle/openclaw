@@ -12,6 +12,10 @@ import {
   normalizeExtensionHostMediaProviderId,
   resolveExtensionHostMediaRuntimeDefaultModelMetadata,
 } from "./media-runtime-backends.js";
+import {
+  listExtensionHostRuntimeBackendIdsByArbitration,
+  resolveExtensionHostRuntimeBackendOrderByArbitration,
+} from "./runtime-backend-arbitration.js";
 import { listExtensionHostTtsRuntimeBackends } from "./tts-runtime-backends.js";
 
 export const EXTENSION_HOST_RUNTIME_BACKEND_FAMILY = "capability.runtime-backend";
@@ -78,9 +82,11 @@ export function listExtensionHostEmbeddingRuntimeBackendCatalogEntries(): readon
 }
 
 export function listExtensionHostEmbeddingRemoteRuntimeBackendIds(): readonly EmbeddingProviderId[] {
-  return listExtensionHostEmbeddingRuntimeBackendCatalogEntries()
-    .filter((entry) => entry.backendId !== "local" && entry.metadata?.autoSelectable === true)
-    .map((entry) => entry.backendId as EmbeddingProviderId);
+  return listExtensionHostRuntimeBackendIdsByArbitration({
+    entries: listExtensionHostEmbeddingRuntimeBackendCatalogEntries(),
+    subsystemId: "embedding",
+    include: (entry) => entry.backendId !== "local" && entry.metadata?.autoSelectable === true,
+  }).map((entry) => entry as EmbeddingProviderId);
 }
 
 export function listExtensionHostMediaRuntimeBackendCatalogEntries(): readonly ExtensionHostRuntimeBackendCatalogEntry[] {
@@ -117,10 +123,11 @@ export function listExtensionHostMediaAutoRuntimeBackendIds(
   capability: MediaUnderstandingCapability,
 ): readonly string[] {
   const subsystemId = mapMediaCapabilityToSubsystem(capability);
-  return listExtensionHostMediaRuntimeBackendCatalogEntries()
-    .filter((entry) => entry.subsystemId === subsystemId && entry.metadata?.autoSelectable === true)
-    .toSorted((left, right) => left.defaultRank - right.defaultRank)
-    .map((entry) => entry.backendId);
+  return listExtensionHostRuntimeBackendIdsByArbitration({
+    entries: listExtensionHostMediaRuntimeBackendCatalogEntries(),
+    subsystemId,
+    include: (entry) => entry.metadata?.autoSelectable === true,
+  });
 }
 
 export function resolveExtensionHostMediaRuntimeDefaultModel(params: {
@@ -163,21 +170,21 @@ export function listExtensionHostTtsRuntimeBackendIds(): readonly TtsProvider[] 
 export function listExtensionHostRuntimeBackendIdsForSubsystem(
   subsystemId: ExtensionHostRuntimeBackendSubsystemId,
 ): readonly string[] {
-  return listExtensionHostRuntimeBackendCatalogEntries()
-    .filter((entry) => entry.subsystemId === subsystemId)
-    .toSorted((left, right) => left.defaultRank - right.defaultRank)
-    .map((entry) => entry.backendId);
+  return listExtensionHostRuntimeBackendIdsByArbitration({
+    entries: listExtensionHostRuntimeBackendCatalogEntries(),
+    subsystemId,
+  });
 }
 
 export function resolveExtensionHostRuntimeBackendOrderForSubsystem(
   subsystemId: ExtensionHostRuntimeBackendSubsystemId,
   preferredBackendId: string,
 ): readonly string[] {
-  const ordered = listExtensionHostRuntimeBackendIdsForSubsystem(subsystemId);
-  if (!ordered.includes(preferredBackendId)) {
-    return [preferredBackendId, ...ordered];
-  }
-  return [preferredBackendId, ...ordered.filter((backendId) => backendId !== preferredBackendId)];
+  return resolveExtensionHostRuntimeBackendOrderByArbitration({
+    entries: listExtensionHostRuntimeBackendCatalogEntries(),
+    subsystemId,
+    preferredBackendId,
+  });
 }
 
 export function listExtensionHostMediaRuntimeBackendIds(

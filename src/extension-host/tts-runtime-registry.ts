@@ -1,4 +1,5 @@
 import type { TtsProvider } from "../config/types.tts.js";
+import { resolveExtensionHostTtsRuntimeBackendOrder } from "./runtime-backend-catalog.js";
 import type { ResolvedTtsConfig } from "./tts-config.js";
 import {
   EXTENSION_HOST_TTS_RUNTIME_BACKEND_IDS,
@@ -36,7 +37,7 @@ export function isExtensionHostTtsProviderConfigured(
 }
 
 export function resolveExtensionHostTtsProviderOrder(primary: TtsProvider): TtsProvider[] {
-  return [primary, ...EXTENSION_HOST_TTS_PROVIDER_IDS.filter((provider) => provider !== primary)];
+  return [...resolveExtensionHostTtsRuntimeBackendOrder(primary)];
 }
 
 export function supportsExtensionHostTtsTelephony(provider: TtsProvider): boolean {
