@@ -253,6 +253,7 @@ Committed implementation slices so far:
 - `6240fb31b5` `TTS: adopt runtime backend catalog`
 - `cfb6779ac2` `Runtime: adopt backend catalog consumers`
 - `24bb26b6dc` `TTS: adopt backend catalog order`
+- `05959b84c6` `TTS: share runtime backend definitions`
 - `89414ed857` `Docs: track extension host migration internally`
 - `d8af1eceaf` `Docs: refresh extension host migration status`
 
