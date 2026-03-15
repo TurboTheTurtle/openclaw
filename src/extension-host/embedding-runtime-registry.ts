@@ -26,6 +26,7 @@ import {
 import { importNodeLlamaCpp } from "../memory/node-llama.js";
 import { resolveUserPath } from "../utils.js";
 import { DEFAULT_EXTENSION_HOST_LOCAL_EMBEDDING_MODEL } from "./embedding-runtime-backends.js";
+import { resolveExtensionHostEmbeddingFallbackPolicy } from "./embedding-runtime-policy.js";
 import type {
   EmbeddingProvider,
   EmbeddingProviderId,
@@ -220,9 +221,22 @@ export async function createExtensionHostEmbeddingProvider(
     return { ...primary, requestedProvider };
   } catch (primaryErr) {
     const reason = formatExtensionHostPrimaryEmbeddingError(primaryErr, requestedProvider);
-    if (fallback && fallback !== "none" && fallback !== requestedProvider) {
+    const fallbackPolicy = resolveExtensionHostEmbeddingFallbackPolicy({
+      requestedProvider,
+      fallback,
+      configuredModel: options.model,
+    });
+    if (fallbackPolicy) {
       try {
-        const fallbackResult = await createExtensionHostEmbeddingProviderById(fallback, options);
+        const fallbackResult = await createExtensionHostEmbeddingProviderById(
+          fallbackPolicy.provider,
+          {
+            ...options,
+            provider: fallbackPolicy.provider,
+            model: fallbackPolicy.model,
+            fallback: "none",
+          },
+        );
         return {
           ...fallbackResult,
           requestedProvider,
@@ -231,7 +245,7 @@ export async function createExtensionHostEmbeddingProvider(
         };
       } catch (fallbackErr) {
         const fallbackReason = formatErrorMessage(fallbackErr);
-        const combinedReason = `${reason}\n\nFallback to ${fallback} failed: ${fallbackReason}`;
+        const combinedReason = `${reason}\n\nFallback to ${fallbackPolicy.provider} failed: ${fallbackReason}`;
         if (
           isMissingExtensionHostEmbeddingApiKeyError(primaryErr) &&
           isMissingExtensionHostEmbeddingApiKeyError(fallbackErr)

@@ -43,7 +43,7 @@ describe("extension host embedding runtime registry", () => {
     createGeminiEmbeddingProvider.mockResolvedValue({
       provider: {
         id: "gemini",
-        model: "text-embedding-004",
+        model: "gemini-embedding-001",
         embedQuery: vi.fn(),
         embedBatch: vi.fn(),
       },
@@ -55,7 +55,7 @@ describe("extension host embedding runtime registry", () => {
     const result = await createExtensionHostEmbeddingProvider({
       config: {} as never,
       provider: "auto",
-      model: "text-embedding-004",
+      model: "gemini-embedding-001",
       fallback: "none",
     });
 
@@ -76,5 +76,37 @@ describe("extension host embedding runtime registry", () => {
     expect(listExtensionHostEmbeddingRemoteRuntimeBackendIds).toHaveBeenCalledTimes(1);
     expect(message).toContain('agents.defaults.memorySearch.provider = "gemini"');
     expect(message).toContain('agents.defaults.memorySearch.provider = "openai"');
+  });
+
+  it("uses the shared fallback policy for explicit provider fallback requests", async () => {
+    createOpenAiEmbeddingProvider.mockRejectedValueOnce(new Error("openai failed"));
+    createGeminiEmbeddingProvider.mockResolvedValueOnce({
+      provider: {
+        id: "gemini",
+        model: "gemini-embedding-001",
+        embedQuery: vi.fn(),
+        embedBatch: vi.fn(),
+      },
+      client: { kind: "gemini" },
+    });
+
+    const { createExtensionHostEmbeddingProvider } =
+      await import("./embedding-runtime-registry.js");
+    const result = await createExtensionHostEmbeddingProvider({
+      config: {} as never,
+      provider: "openai",
+      model: "text-embedding-3-small",
+      fallback: "gemini",
+    });
+
+    expect(createGeminiEmbeddingProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "gemini",
+        model: "gemini-embedding-001",
+        fallback: "none",
+      }),
+    );
+    expect(result.fallbackFrom).toBe("openai");
+    expect(result.provider?.id).toBe("gemini");
   });
 });

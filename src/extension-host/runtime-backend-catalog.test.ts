@@ -13,6 +13,9 @@ vi.mock("./embedding-runtime-backends.js", () => ({
   isExtensionHostEmbeddingRuntimeBackendAutoSelectable: vi.fn(
     (backendId: string) => backendId !== "ollama",
   ),
+  resolveExtensionHostEmbeddingRuntimeDefaultModel: vi.fn((backendId: string) =>
+    backendId === "local" ? "local-model.gguf" : `${backendId}-default-model`,
+  ),
 }));
 
 vi.mock("./media-runtime-backends.js", () => ({
@@ -74,8 +77,14 @@ describe("runtime-backend-catalog", () => {
     ).toBe(true);
     expect(entries.every((entry) => entry.subsystemId === "embedding")).toBe(true);
     expect(entries[0]?.capabilities).toContain("embed.query");
-    expect(entries[0]?.metadata).toMatchObject({ autoSelectable: true });
-    expect(entries.at(-1)?.metadata).toMatchObject({ autoSelectable: false });
+    expect(entries[0]?.metadata).toMatchObject({
+      autoSelectable: true,
+      defaultModel: "local-model.gguf",
+    });
+    expect(entries.at(-1)?.metadata).toMatchObject({
+      autoSelectable: false,
+      defaultModel: "ollama-default-model",
+    });
   });
 
   it("splits media providers into subsystem-specific runtime-backend catalog entries", async () => {

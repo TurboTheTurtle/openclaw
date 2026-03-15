@@ -1,11 +1,7 @@
 import { resolveAgentDir } from "../agents/agent-scope.js";
 import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import type { OpenClawConfig } from "../config/config.js";
-import { DEFAULT_GEMINI_EMBEDDING_MODEL } from "../memory/embeddings-gemini.js";
-import { DEFAULT_MISTRAL_EMBEDDING_MODEL } from "../memory/embeddings-mistral.js";
-import { DEFAULT_OLLAMA_EMBEDDING_MODEL } from "../memory/embeddings-ollama.js";
-import { DEFAULT_OPENAI_EMBEDDING_MODEL } from "../memory/embeddings-openai.js";
-import { DEFAULT_VOYAGE_EMBEDDING_MODEL } from "../memory/embeddings-voyage.js";
+import { resolveExtensionHostEmbeddingFallbackPolicy } from "./embedding-runtime-policy.js";
 import {
   createEmbeddingProvider,
   type EmbeddingProvider,
@@ -72,18 +68,25 @@ export async function activateEmbeddingManagerFallbackProvider(params: {
   state: EmbeddingManagerRuntimeState;
   reason: string;
 }): Promise<EmbeddingManagerFallbackActivation | null> {
-  const fallback = params.settings.fallback;
   const { provider, fallbackFrom } = params.state;
-  if (!fallback || fallback === "none" || !provider || fallback === provider.id || fallbackFrom) {
+  if (!provider || fallbackFrom) {
+    return null;
+  }
+  const fallbackPolicy = resolveExtensionHostEmbeddingFallbackPolicy({
+    requestedProvider: provider.id as EmbeddingProviderId,
+    fallback: params.settings.fallback,
+    configuredModel: params.settings.model,
+  });
+  if (!fallbackPolicy) {
     return null;
   }
 
   const result = await createEmbeddingProvider({
     config: params.cfg,
     agentDir: resolveAgentDir(params.cfg, params.agentId),
-    provider: fallback,
+    provider: fallbackPolicy.provider,
     remote: params.settings.remote,
-    model: resolveEmbeddingFallbackModel(fallback, params.settings.model),
+    model: fallbackPolicy.model,
     outputDimensionality: params.settings.outputDimensionality,
     fallback: "none",
     local: params.settings.local,
@@ -99,24 +102,4 @@ export async function activateEmbeddingManagerFallbackProvider(params: {
     mistral: result.mistral,
     ollama: result.ollama,
   };
-}
-
-function resolveEmbeddingFallbackModel(
-  fallback: Exclude<ResolvedMemorySearchConfig["fallback"], undefined | "none">,
-  configuredModel: string,
-): string {
-  switch (fallback) {
-    case "gemini":
-      return DEFAULT_GEMINI_EMBEDDING_MODEL;
-    case "openai":
-      return DEFAULT_OPENAI_EMBEDDING_MODEL;
-    case "voyage":
-      return DEFAULT_VOYAGE_EMBEDDING_MODEL;
-    case "mistral":
-      return DEFAULT_MISTRAL_EMBEDDING_MODEL;
-    case "ollama":
-      return DEFAULT_OLLAMA_EMBEDDING_MODEL;
-    case "local":
-      return configuredModel;
-  }
 }

@@ -1,6 +1,7 @@
 import type { TtsProvider } from "../config/types.tts.js";
 import type { MediaUnderstandingCapability } from "../media-understanding/types.js";
 import {
+  resolveExtensionHostEmbeddingRuntimeDefaultModel,
   EXTENSION_HOST_EMBEDDING_RUNTIME_BACKEND_IDS,
   isExtensionHostEmbeddingRuntimeBackendAutoSelectable,
 } from "./embedding-runtime-backends.js";
@@ -77,6 +78,7 @@ export function listExtensionHostEmbeddingRuntimeBackendCatalogEntries(): readon
     capabilities: ["embed.query", "embed.batch"],
     metadata: {
       autoSelectable: isExtensionHostEmbeddingRuntimeBackendAutoSelectable(backendId),
+      defaultModel: resolveExtensionHostEmbeddingRuntimeDefaultModel(backendId),
     },
   }));
 }
