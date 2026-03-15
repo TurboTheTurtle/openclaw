@@ -256,6 +256,7 @@ Committed implementation slices so far:
 - `05959b84c6` `TTS: share runtime backend definitions`
 - `3b7f993690` `Memory: share runtime backend definitions`
 - `4b1f31f947` `Media: share runtime backend definitions`
+- `7ff79aa494` `Memory: adopt embedding backend catalog`
 - `89414ed857` `Docs: track extension host migration internally`
 - `d8af1eceaf` `Docs: refresh extension host migration status`
 
