@@ -11,6 +11,38 @@ vi.mock("./runtime-backend-catalog.js", () => ({
       (candidate, index, items) => items.indexOf(candidate) === index,
     ),
   ),
+  listExtensionHostTtsRuntimeBackendCatalogEntries: vi.fn(() => [
+    {
+      id: "capability.runtime-backend:tts:openai",
+      family: "capability.runtime-backend",
+      subsystemId: "tts",
+      backendId: "openai",
+      source: "builtin",
+      defaultRank: 0,
+      selectorKeys: ["openai"],
+      capabilities: ["tts.synthesis", "tts.telephony"],
+    },
+    {
+      id: "capability.runtime-backend:tts:elevenlabs",
+      family: "capability.runtime-backend",
+      subsystemId: "tts",
+      backendId: "elevenlabs",
+      source: "builtin",
+      defaultRank: 1,
+      selectorKeys: ["elevenlabs"],
+      capabilities: ["tts.synthesis", "tts.telephony"],
+    },
+    {
+      id: "capability.runtime-backend:tts:edge",
+      family: "capability.runtime-backend",
+      subsystemId: "tts",
+      backendId: "edge",
+      source: "builtin",
+      defaultRank: 2,
+      selectorKeys: ["edge"],
+      capabilities: ["tts.synthesis"],
+    },
+  ]),
 }));
 
 describe("tts-status", () => {
