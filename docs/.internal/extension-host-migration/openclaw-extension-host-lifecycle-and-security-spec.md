@@ -147,7 +147,7 @@ What is still pending from this spec:
 - broader extension-host lifecycle ownership beyond the loader state machine, service-lifecycle boundary, CLI-lifecycle boundary, session-owned activation state, and explicit discovery-policy, activation-policy, and finalization-policy outcomes
 - activation pipeline ownership
 - host-owned registries for setup, CLI, routes, services, slots, and backends
-- broader consumer adoption and arbitration on top of the now-started catalog-backed runtime-family descriptors for embeddings, media, and TTS, including explicit fallback and override policy instead of plugin-era capability reads
+- broader consumer adoption and arbitration on top of the now-started catalog-backed runtime-family descriptors for embeddings, media, and TTS, including explicit fallback and override policy instead of plugin-era capability reads; TTS is now the first subsystem family with host-owned configured-fallback policy on top of that arbitration layer
 - a clear host-owned split for extension-backed search between agent-visible tool publication and any optional runtime-internal search backend registry
 - permission-mode enforcement
 - per-extension state ownership and migration
