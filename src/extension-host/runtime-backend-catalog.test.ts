@@ -15,35 +15,32 @@ vi.mock("./embedding-runtime-backends.js", () => ({
   ),
 }));
 
-vi.mock("./media-runtime-registry.js", () => ({
-  buildExtensionHostMediaUnderstandingRegistry: vi.fn(
-    () =>
-      new Map([
-        [
-          "openai",
-          {
-            id: "openai",
-            capabilities: ["image", "video"],
-          },
-        ],
-        [
-          "google",
-          {
-            id: "google",
-            capabilities: ["image"],
-          },
-        ],
-        [
-          "deepgram",
-          {
-            id: "deepgram",
-            capabilities: ["audio"],
-          },
-        ],
-      ]),
+vi.mock("./media-runtime-backends.js", () => ({
+  buildExtensionHostMediaRuntimeSelectorKeys: vi.fn((id: string) =>
+    id === "google" ? ["google", "gemini"] : [id],
+  ),
+  listExtensionHostMediaAutoRuntimeBackendSeedIds: vi.fn(
+    (capability: "audio" | "image" | "video") =>
+      ({
+        audio: ["deepgram"],
+        image: ["openai", "google"],
+        video: ["openai"],
+      })[capability],
+  ),
+  listExtensionHostMediaRuntimeBackendIds: vi.fn(
+    (capability: "audio" | "image" | "video") =>
+      ({
+        audio: ["deepgram"],
+        image: ["openai", "google"],
+        video: ["openai"],
+      })[capability],
   ),
   normalizeExtensionHostMediaProviderId: vi.fn((id: string) =>
     id.trim().toLowerCase() === "gemini" ? "google" : id.trim().toLowerCase(),
+  ),
+  resolveExtensionHostMediaRuntimeDefaultModelMetadata: vi.fn(
+    (params: { capability: "audio" | "image" | "video"; backendId: string }) =>
+      params.capability === "image" && params.backendId === "openai" ? "gpt-5-mini" : undefined,
   ),
 }));
 

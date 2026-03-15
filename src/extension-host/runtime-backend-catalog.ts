@@ -1,11 +1,4 @@
 import type { TtsProvider } from "../config/types.tts.js";
-import {
-  AUTO_AUDIO_KEY_PROVIDERS,
-  AUTO_IMAGE_KEY_PROVIDERS,
-  AUTO_VIDEO_KEY_PROVIDERS,
-  DEFAULT_AUDIO_MODELS,
-  DEFAULT_IMAGE_MODELS,
-} from "../media-understanding/defaults.js";
 import type { MediaUnderstandingCapability } from "../media-understanding/types.js";
 import {
   EXTENSION_HOST_EMBEDDING_RUNTIME_BACKEND_IDS,
@@ -13,9 +6,12 @@ import {
 } from "./embedding-runtime-backends.js";
 import type { EmbeddingProviderId } from "./embedding-runtime-types.js";
 import {
-  buildExtensionHostMediaUnderstandingRegistry,
+  buildExtensionHostMediaRuntimeSelectorKeys,
+  listExtensionHostMediaAutoRuntimeBackendSeedIds,
+  listExtensionHostMediaRuntimeBackendIds as listExtensionHostMediaRuntimeBackendIdsFromDefinitions,
   normalizeExtensionHostMediaProviderId,
-} from "./media-runtime-registry.js";
+  resolveExtensionHostMediaRuntimeDefaultModelMetadata,
+} from "./media-runtime-backends.js";
 import { listExtensionHostTtsRuntimeBackends } from "./tts-runtime-backends.js";
 
 export const EXTENSION_HOST_RUNTIME_BACKEND_FAMILY = "capability.runtime-backend";
@@ -46,15 +42,6 @@ type ExtensionHostMediaRuntimeSubsystemId = Extract<
   "media.audio" | "media.image" | "media.video"
 >;
 
-const EXTENSION_HOST_MEDIA_AUTO_PROVIDER_IDS: Record<
-  MediaUnderstandingCapability,
-  readonly string[]
-> = {
-  audio: AUTO_AUDIO_KEY_PROVIDERS,
-  image: AUTO_IMAGE_KEY_PROVIDERS,
-  video: AUTO_VIDEO_KEY_PROVIDERS,
-};
-
 function buildRuntimeBackendCatalogId(
   subsystemId: ExtensionHostRuntimeBackendSubsystemId,
   backendId: string,
@@ -72,52 +59,6 @@ function mapMediaCapabilityToSubsystem(
     return "media.video";
   }
   return "media.image";
-}
-
-function buildMediaSelectorKeys(providerId: string): readonly string[] {
-  const normalized = normalizeExtensionHostMediaProviderId(providerId);
-  if (normalized === "google") {
-    return [providerId, "gemini"];
-  }
-  return normalized === providerId ? [providerId] : [providerId, normalized];
-}
-
-function buildExtensionHostMediaRuntimeProviderIds(
-  capability: MediaUnderstandingCapability,
-): readonly string[] {
-  const registry = buildExtensionHostMediaUnderstandingRegistry();
-  const ordered: string[] = [];
-  const seen = new Set<string>();
-  const pushProvider = (providerId: string) => {
-    const normalized = normalizeExtensionHostMediaProviderId(providerId);
-    const provider = registry.get(normalized);
-    if (!provider || seen.has(normalized) || !(provider.capabilities ?? []).includes(capability)) {
-      return;
-    }
-    seen.add(normalized);
-    ordered.push(normalized);
-  };
-
-  for (const providerId of EXTENSION_HOST_MEDIA_AUTO_PROVIDER_IDS[capability]) {
-    pushProvider(providerId);
-  }
-  for (const provider of registry.values()) {
-    pushProvider(provider.id);
-  }
-  return ordered;
-}
-
-function resolveExtensionHostMediaRuntimeDefaultModelFromDefaults(params: {
-  capability: MediaUnderstandingCapability;
-  backendId: string;
-}): string | undefined {
-  if (params.capability === "audio") {
-    return DEFAULT_AUDIO_MODELS[params.backendId];
-  }
-  if (params.capability === "image") {
-    return DEFAULT_IMAGE_MODELS[params.backendId];
-  }
-  return undefined;
 }
 
 export function listExtensionHostEmbeddingRuntimeBackendCatalogEntries(): readonly ExtensionHostRuntimeBackendCatalogEntry[] {
@@ -144,29 +85,26 @@ export function listExtensionHostEmbeddingRemoteRuntimeBackendIds(): readonly Em
 
 export function listExtensionHostMediaRuntimeBackendCatalogEntries(): readonly ExtensionHostRuntimeBackendCatalogEntry[] {
   const entries: ExtensionHostRuntimeBackendCatalogEntry[] = [];
-  const registry = buildExtensionHostMediaUnderstandingRegistry();
   for (const capability of ["audio", "image", "video"] as const) {
-    const providerIds = buildExtensionHostMediaRuntimeProviderIds(capability);
+    const providerIds = listExtensionHostMediaRuntimeBackendIdsFromDefinitions(capability);
     for (const [defaultRank, providerId] of providerIds.entries()) {
-      const provider = registry.get(providerId);
-      if (!provider) {
-        continue;
-      }
-      const defaultModel = resolveExtensionHostMediaRuntimeDefaultModelFromDefaults({
+      const defaultModel = resolveExtensionHostMediaRuntimeDefaultModelMetadata({
         capability,
         backendId: providerId,
       });
       entries.push({
-        id: buildRuntimeBackendCatalogId(mapMediaCapabilityToSubsystem(capability), provider.id),
+        id: buildRuntimeBackendCatalogId(mapMediaCapabilityToSubsystem(capability), providerId),
         family: EXTENSION_HOST_RUNTIME_BACKEND_FAMILY,
         subsystemId: mapMediaCapabilityToSubsystem(capability),
-        backendId: provider.id,
+        backendId: providerId,
         source: "builtin",
         defaultRank,
-        selectorKeys: buildMediaSelectorKeys(provider.id),
+        selectorKeys: buildExtensionHostMediaRuntimeSelectorKeys(providerId),
         capabilities: [capability],
         metadata: {
-          autoSelectable: EXTENSION_HOST_MEDIA_AUTO_PROVIDER_IDS[capability].includes(provider.id),
+          autoSelectable: listExtensionHostMediaAutoRuntimeBackendSeedIds(capability).includes(
+            normalizeExtensionHostMediaProviderId(providerId),
+          ),
           ...(defaultModel ? { defaultModel } : {}),
         },
       });
