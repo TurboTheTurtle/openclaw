@@ -1,9 +1,10 @@
 import type { MediaUnderstandingCapability } from "../media-understanding/types.js";
 import { normalizeExtensionHostMediaProviderId } from "./media-runtime-registry.js";
 import {
-  listExtensionHostMediaAutoRuntimeBackendIds,
+  listExtensionHostMediaRuntimeBackendCatalogEntries,
   resolveExtensionHostMediaRuntimeDefaultModel,
 } from "./runtime-backend-catalog.js";
+import { resolveExtensionHostRuntimeBackendIdsByPolicy } from "./runtime-backend-policy.js";
 
 export type ExtensionHostMediaActiveModel = {
   provider: string;
@@ -14,6 +15,18 @@ export type ExtensionHostMediaProviderCandidate = {
   provider: string;
   model?: string;
 };
+
+function resolveExtensionHostMediaRuntimeSubsystemId(
+  capability: MediaUnderstandingCapability,
+): "media.audio" | "media.image" | "media.video" {
+  if (capability === "audio") {
+    return "media.audio";
+  }
+  if (capability === "video") {
+    return "media.video";
+  }
+  return "media.image";
+}
 
 function resolveExtensionHostMediaCandidateModel(params: {
   capability: MediaUnderstandingCapability;
@@ -39,16 +52,16 @@ export function resolveExtensionHostMediaProviderCandidates(params: {
   activeModel?: ExtensionHostMediaActiveModel;
 }): readonly ExtensionHostMediaProviderCandidate[] {
   const candidates: ExtensionHostMediaProviderCandidate[] = [];
-  const seen = new Set<string>();
-
-  const pushCandidate = (provider: string | undefined): void => {
-    const normalized = provider?.trim()
-      ? normalizeExtensionHostMediaProviderId(provider)
-      : undefined;
-    if (!normalized || seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
+  const preferredProvider = params.activeModel?.provider?.trim()
+    ? normalizeExtensionHostMediaProviderId(params.activeModel.provider)
+    : undefined;
+  for (const provider of resolveExtensionHostRuntimeBackendIdsByPolicy({
+    entries: listExtensionHostMediaRuntimeBackendCatalogEntries(),
+    subsystemId: resolveExtensionHostMediaRuntimeSubsystemId(params.capability),
+    preferredBackendId: preferredProvider,
+    include: (entry) => entry.metadata?.autoSelectable === true,
+  })) {
+    const normalized = normalizeExtensionHostMediaProviderId(provider);
     candidates.push({
       provider: normalized,
       model: resolveExtensionHostMediaCandidateModel({
@@ -57,11 +70,6 @@ export function resolveExtensionHostMediaProviderCandidates(params: {
         activeModel: params.activeModel,
       }),
     });
-  };
-
-  pushCandidate(params.activeModel?.provider);
-  for (const providerId of listExtensionHostMediaAutoRuntimeBackendIds(params.capability)) {
-    pushCandidate(providerId);
   }
 
   return candidates;
