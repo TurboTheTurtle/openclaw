@@ -1,7 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./embedding-runtime-registry.js", () => ({
+vi.mock("./embedding-runtime-backends.js", () => ({
+  EXTENSION_HOST_EMBEDDING_RUNTIME_BACKEND_IDS: [
+    "local",
+    "openai",
+    "gemini",
+    "voyage",
+    "mistral",
+    "ollama",
+  ],
   EXTENSION_HOST_REMOTE_EMBEDDING_PROVIDER_IDS: ["openai", "gemini", "voyage", "mistral"],
+  isExtensionHostEmbeddingRuntimeBackendAutoSelectable: vi.fn(
+    (backendId: string) => backendId !== "ollama",
+  ),
 }));
 
 vi.mock("./media-runtime-registry.js", () => ({

@@ -25,6 +25,10 @@ import {
 } from "../memory/embeddings-voyage.js";
 import { importNodeLlamaCpp } from "../memory/node-llama.js";
 import { resolveUserPath } from "../utils.js";
+import {
+  DEFAULT_EXTENSION_HOST_LOCAL_EMBEDDING_MODEL,
+  EXTENSION_HOST_REMOTE_EMBEDDING_PROVIDER_IDS,
+} from "./embedding-runtime-backends.js";
 import type {
   EmbeddingProvider,
   EmbeddingProviderId,
@@ -40,16 +44,6 @@ export type {
   OpenAiEmbeddingClient,
   VoyageEmbeddingClient,
 };
-
-export const DEFAULT_EXTENSION_HOST_LOCAL_EMBEDDING_MODEL =
-  "hf:ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf";
-
-export const EXTENSION_HOST_REMOTE_EMBEDDING_PROVIDER_IDS = [
-  "openai",
-  "gemini",
-  "voyage",
-  "mistral",
-] as const satisfies readonly EmbeddingProviderId[];
 
 export function canAutoSelectExtensionHostLocalEmbedding(
   options: EmbeddingProviderOptions,

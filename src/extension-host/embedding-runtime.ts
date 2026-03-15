@@ -1,7 +1,5 @@
-import {
-  DEFAULT_EXTENSION_HOST_LOCAL_EMBEDDING_MODEL,
-  createExtensionHostEmbeddingProvider,
-} from "./embedding-runtime-registry.js";
+import { DEFAULT_EXTENSION_HOST_LOCAL_EMBEDDING_MODEL } from "./embedding-runtime-backends.js";
+import { createExtensionHostEmbeddingProvider } from "./embedding-runtime-registry.js";
 import type {
   EmbeddingProviderOptions,
   EmbeddingProviderResult,

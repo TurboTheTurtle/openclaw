@@ -7,7 +7,10 @@ import {
   DEFAULT_IMAGE_MODELS,
 } from "../media-understanding/defaults.js";
 import type { MediaUnderstandingCapability } from "../media-understanding/types.js";
-import { EXTENSION_HOST_REMOTE_EMBEDDING_PROVIDER_IDS } from "./embedding-runtime-registry.js";
+import {
+  EXTENSION_HOST_EMBEDDING_RUNTIME_BACKEND_IDS,
+  isExtensionHostEmbeddingRuntimeBackendAutoSelectable,
+} from "./embedding-runtime-backends.js";
 import type { EmbeddingProviderId } from "./embedding-runtime-types.js";
 import {
   buildExtensionHostMediaUnderstandingRegistry,
@@ -42,12 +45,6 @@ type ExtensionHostMediaRuntimeSubsystemId = Extract<
   ExtensionHostRuntimeBackendSubsystemId,
   "media.audio" | "media.image" | "media.video"
 >;
-
-const EXTENSION_HOST_EMBEDDING_BACKEND_IDS = [
-  "local",
-  ...EXTENSION_HOST_REMOTE_EMBEDDING_PROVIDER_IDS,
-  "ollama",
-] as const satisfies readonly EmbeddingProviderId[];
 
 const EXTENSION_HOST_MEDIA_AUTO_PROVIDER_IDS: Record<
   MediaUnderstandingCapability,
@@ -124,7 +121,7 @@ function resolveExtensionHostMediaRuntimeDefaultModelFromDefaults(params: {
 }
 
 export function listExtensionHostEmbeddingRuntimeBackendCatalogEntries(): readonly ExtensionHostRuntimeBackendCatalogEntry[] {
-  return EXTENSION_HOST_EMBEDDING_BACKEND_IDS.map((backendId, defaultRank) => ({
+  return EXTENSION_HOST_EMBEDDING_RUNTIME_BACKEND_IDS.map((backendId, defaultRank) => ({
     id: buildRuntimeBackendCatalogId("embedding", backendId),
     family: EXTENSION_HOST_RUNTIME_BACKEND_FAMILY,
     subsystemId: "embedding",
@@ -134,8 +131,7 @@ export function listExtensionHostEmbeddingRuntimeBackendCatalogEntries(): readon
     selectorKeys: [backendId],
     capabilities: ["embed.query", "embed.batch"],
     metadata: {
-      autoSelectable:
-        backendId === "local" || EXTENSION_HOST_REMOTE_EMBEDDING_PROVIDER_IDS.includes(backendId),
+      autoSelectable: isExtensionHostEmbeddingRuntimeBackendAutoSelectable(backendId),
     },
   }));
 }
