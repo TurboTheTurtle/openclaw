@@ -949,4 +949,92 @@ describe("devices agent bindings", () => {
       ["MAIN", null],
     ]);
   });
+
+  it("keeps unavailable saved bindings visible across node loss and recovery", () => {
+    const onBindDefault = vi.fn();
+    const onBindAgent = vi.fn();
+    const configForm = {
+      tools: { exec: { node: "default-node" } },
+      agents: {
+        entries: {
+          main: { default: true },
+          research: {
+            name: "Research",
+            tools: { exec: { node: "agent-node" } },
+          },
+        },
+      },
+    };
+    const container = document.createElement("div");
+    document.body.append(container);
+    const renderBindings = (nodes: Array<Record<string, unknown>>) => {
+      render(
+        renderDevices(baseProps({ nodes, configForm, onBindDefault, onBindAgent })),
+        container,
+      );
+      const section = getSection(container, "Exec node binding");
+      return {
+        defaultBinding: expectDefined(
+          getSettingsRow(section, "Default binding").querySelector<HTMLSelectElement>("select"),
+          "default node binding",
+        ),
+        researchBinding: expectDefined(
+          getSettingsRow(section, "Research (research)").querySelector<HTMLSelectElement>("select"),
+          "research node binding",
+        ),
+      };
+    };
+    const expectSelection = (
+      select: HTMLSelectElement,
+      expected: { value: string; label: string; disabled: boolean },
+    ) => {
+      const option = expectDefined(select.selectedOptions[0], "selected node binding option");
+      expect(select.value).toBe(expected.value);
+      expect(option.disabled).toBe(expected.disabled);
+      expect(option.textContent?.replace(/\s+/gu, " ").trim()).toBe(expected.label);
+    };
+
+    renderBindings([
+      { nodeId: "default-node", displayName: "Default worker", commands: ["system.run"] },
+      { nodeId: "agent-node", displayName: "Research worker", commands: ["system.run"] },
+    ]);
+    const unavailable = renderBindings([
+      { nodeId: "default-node", displayName: "Default worker", commands: [] },
+    ]);
+    expectSelection(unavailable.defaultBinding, {
+      value: "default-node",
+      label: "default-node (Unavailable)",
+      disabled: true,
+    });
+    expectSelection(unavailable.researchBinding, {
+      value: "agent-node",
+      label: "agent-node (Unavailable)",
+      disabled: true,
+    });
+
+    const recovered = renderBindings([
+      {
+        nodeId: "default-node",
+        displayName: "Default worker restored",
+        commands: ["system.run"],
+      },
+      {
+        nodeId: "agent-node",
+        displayName: "Research worker restored",
+        commands: ["system.run"],
+      },
+    ]);
+    expectSelection(recovered.defaultBinding, {
+      value: "default-node",
+      label: "Default worker restored · default-node",
+      disabled: false,
+    });
+    expectSelection(recovered.researchBinding, {
+      value: "agent-node",
+      label: "Research worker restored · agent-node",
+      disabled: false,
+    });
+    expect(onBindDefault).not.toHaveBeenCalled();
+    expect(onBindAgent).not.toHaveBeenCalled();
+  });
 });

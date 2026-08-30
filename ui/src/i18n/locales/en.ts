@@ -721,6 +721,7 @@ export const en: TranslationMap = {
       binding: "Binding",
       useDefault: "Use default",
       any: "any",
+      unavailable: "Unavailable",
     },
     inventory: {
       title: "Paired devices",
