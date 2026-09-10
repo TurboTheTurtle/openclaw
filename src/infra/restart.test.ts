@@ -87,10 +87,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function setPlatform(platform: NodeJS.Platform): void {
-  mockProcessPlatform(platform);
-}
-
 function requireFirstSpawnSyncCall(): [unknown, unknown, unknown] {
   const [call] = spawnSyncMock.mock.calls;
   if (!call) {
@@ -225,7 +221,7 @@ describe.runIf(process.platform !== "win32")("cleanStaleGatewayProcessesSync", (
 
 describe("triggerOpenClawRestart", () => {
   it("does not kickstart after bootstrap registers an unloaded LaunchAgent", () => {
-    setPlatform("darwin");
+    mockProcessPlatform("darwin");
     withEnv(
       { VITEST: undefined, NODE_ENV: undefined, HOME: "/Users/test", OPENCLAW_PROFILE: "default" },
       () => {
@@ -258,7 +254,7 @@ describe("triggerOpenClawRestart", () => {
   });
 
   it("continues when launchctl bootstrap reports the service is already loaded", () => {
-    setPlatform("darwin");
+    mockProcessPlatform("darwin");
     withEnv(
       { VITEST: undefined, NODE_ENV: undefined, HOME: "/Users/test", OPENCLAW_PROFILE: "default" },
       () => {
@@ -295,7 +291,7 @@ describe("triggerOpenClawRestart", () => {
   });
 
   it("bootstraps the boot-volume plist when HOME is on an external volume", () => {
-    setPlatform("darwin");
+    mockProcessPlatform("darwin");
     fsState.externalHome = "/Volumes/MainDataDrive";
     withEnv(
       {

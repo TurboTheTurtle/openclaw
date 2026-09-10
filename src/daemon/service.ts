@@ -25,6 +25,7 @@ import {
 } from "./launchd.js";
 import {
   installScheduledTask,
+  isScheduledTaskEnabled,
   isScheduledTaskInstalled,
   readScheduledTaskCommand,
   readScheduledTaskRuntime,
@@ -36,6 +37,7 @@ import {
 } from "./schtasks.js";
 import { mergeGatewayServiceEnv } from "./service-env-merge.js";
 import { resolveServiceEntrypoint } from "./service-layout.js";
+import { withGatewayServiceOperationLock } from "./service-operation-lock.js";
 import {
   createServiceRuntimeInspectionFailure,
   type GatewayServiceRuntime,
@@ -100,7 +102,7 @@ export type GatewayService = {
   hasInstalledDefinition?: (args: GatewayServiceEnvArgs) => Promise<boolean>;
   isAbsent?: (args: GatewayServiceEnvArgs) => Promise<boolean>;
   readDefinitionMutationCapability?: (
-    args: GatewayServiceEnvArgs & { environment?: GatewayServiceEnv },
+    args: GatewayServiceEnvArgs & { environment?: GatewayServiceEnv; requireLoaded?: boolean },
   ) => ReturnType<typeof readSystemdDefinitionMutationCapability>;
   readCommand: (
     env: GatewayServiceEnv,
@@ -126,23 +128,27 @@ export async function readGatewayServiceCommandForMutation(
   env: GatewayServiceEnv,
   opts?: GatewayServiceReadOptions,
 ): Promise<GatewayServiceCommandForMutation> {
-  // A loaded pre-migration job has no canonical plist yet. Discover its verified
-  // definition before strict runtime inspection would classify it as an orphan.
-  if (
-    process.platform === "darwin" &&
-    opts?.requireEffective &&
-    (await readExistingLaunchAgentPlist(resolveLaunchAgentPlistPath(env))) === null
-  ) {
-    const relocated = await readRelocatedLaunchAgentForInstall(env, opts);
-    if (relocated !== null) {
-      return { kind: "relocated", ...relocated };
-    }
-  }
   const mustFailClosedOnCommandRead =
     process.platform === "darwin" || opts?.requireEffective === true;
-  const command = mustFailClosedOnCommandRead
-    ? await service.readCommand(env, opts)
-    : await service.readCommand(env, opts).catch(() => null);
+  let command: GatewayServiceCommandConfig | null = null;
+  let commandReadError: Error | undefined;
+  if (process.platform === "darwin" && opts?.requireEffective) {
+    try {
+      command = await service.readCommand(env, opts);
+    } catch (error) {
+      // Strict launchd parsing rejects a missing canonical plist before a
+      // pre-canonical definition can be inspected. Defer this error until a
+      // verified relocation has had the only permitted chance to recover it.
+      commandReadError =
+        error instanceof Error
+          ? error
+          : new Error("The current LaunchAgent definition cannot be safely inspected.");
+    }
+  } else {
+    command = mustFailClosedOnCommandRead
+      ? await service.readCommand(env, opts)
+      : await service.readCommand(env, opts).catch(() => null);
+  }
   if (command !== null) {
     return { kind: "current", command };
   }
@@ -152,19 +158,29 @@ export async function readGatewayServiceCommandForMutation(
 
   // The steady-state parser returns null for both ENOENT and read/parse failures.
   // A managed mutation must distinguish those cases before it can replace the definition.
+  // A verified pre-canonical definition is considered only after the canonical
+  // parser has no command and the canonical plist is confirmed absent.
   const canonicalPlistPath = resolveLaunchAgentPlistPath(env);
   if ((await readExistingLaunchAgentPlist(canonicalPlistPath)) !== null) {
-    throw new Error("The current LaunchAgent definition cannot be safely inspected.");
+    throw (
+      commandReadError ??
+      new Error("The current LaunchAgent definition cannot be safely inspected.")
+    );
   }
   const relocated = await readRelocatedLaunchAgentForInstall(env, opts);
-  if (relocated === null) {
-    return { kind: "missing", command: null };
+  if (relocated !== null) {
+    return { kind: "relocated", ...relocated };
   }
-  return { kind: "relocated", ...relocated };
+  if (commandReadError) {
+    throw commandReadError;
+  }
+  return { kind: "missing", command: null };
 }
 
 type ReadGatewayServiceStateArgs = GatewayServiceEnvArgs & {
   requireEffective?: boolean;
+  requireLoadedCommand?: boolean;
+  loadForInspection?: GatewayServiceReadOptions["loadForInspection"];
   validateEnvBeforeStatusRead?: (env: GatewayServiceEnv) => void;
 };
 
@@ -279,6 +295,8 @@ export async function readGatewayServiceState(
         await readGatewayServiceCommandForMutation(service, baseEnv, {
           timeoutMs,
           requireEffective: true,
+          ...(args.requireLoadedCommand ? { requireLoaded: true } : {}),
+          ...(args.loadForInspection ? { loadForInspection: args.loadForInspection } : {}),
         })
       ).command
     : await service.readCommand(baseEnv, { timeoutMs }).catch(() => null);
@@ -291,12 +309,21 @@ export async function readGatewayServiceState(
       : (service.hasInstalledDefinition?.({ env, timeoutMs }).catch(() => false) ?? false),
     readGatewayServiceLoadState(service, { env, timeoutMs }),
     service
-      .readRuntime(env, { timeoutMs })
+      .readRuntime(env, {
+        timeoutMs,
+        ...(args.requireEffective && args.requireLoadedCommand ? { requireLoaded: true } : {}),
+        ...(args.loadForInspection ? { loadForInspection: args.loadForInspection } : {}),
+      })
       .catch((error: unknown) => createServiceRuntimeInspectionFailure(error)),
     // Update policy needs definition authority; ordinary status/start reads do not.
     args.requireEffective
       ? service
-          .readDefinitionMutationCapability?.({ env: baseEnv, environment: env, timeoutMs })
+          .readDefinitionMutationCapability?.({
+            env: baseEnv,
+            environment: env,
+            timeoutMs,
+            ...(args.requireLoadedCommand ? { requireLoaded: true } : {}),
+          })
           .catch(() => ({ kind: "unknown", reason: "inspection-failed" }) as const)
       : undefined,
   ]);
@@ -465,11 +492,16 @@ const GATEWAY_SERVICE_REGISTRY: Record<SupportedGatewayServicePlatform, GatewayS
     stop: stopSystemdService,
     restart: restartSystemdService,
     isLoaded: isSystemdServiceEnabled,
+    isEnabled: isSystemdServiceEnabled,
     isAbsent: ({ env }) => isSystemdServiceAbsent(env ?? process.env),
     hasInstalledDefinition: async ({ env }) =>
       (await findInstalledSystemdGatewayScope(env ?? process.env)) !== null,
-    readDefinitionMutationCapability: ({ env, environment, timeoutMs }) =>
-      readSystemdDefinitionMutationCapability(env ?? process.env, { environment, timeoutMs }),
+    readDefinitionMutationCapability: ({ env, environment, timeoutMs, requireLoaded }) =>
+      readSystemdDefinitionMutationCapability(env ?? process.env, {
+        environment,
+        timeoutMs,
+        ...(requireLoaded ? { requireLoaded: true } : {}),
+      }),
     readCommand: readSystemdServiceExecStart,
     readRuntime: readSystemdServiceRuntime,
   },
@@ -484,15 +516,16 @@ const GATEWAY_SERVICE_REGISTRY: Record<SupportedGatewayServicePlatform, GatewayS
     stop: stopScheduledTask,
     restart: restartScheduledTask,
     isLoaded: isScheduledTaskInstalled,
+    isEnabled: isScheduledTaskEnabled,
     readCommand: readScheduledTaskCommand,
     readRuntime: readScheduledTaskRuntime,
   },
 };
 
-function guardGatewayServiceMutation<TArgs extends { env?: GatewayServiceEnv }, TResult>(
-  action: string,
-  mutate: (args: TArgs) => Promise<TResult>,
-): (args: TArgs) => Promise<TResult> {
+function guardGatewayServiceMutation<
+  TArgs extends { env?: GatewayServiceEnv; assertCurrent?: () => void },
+  TResult,
+>(action: string, mutate: (args: TArgs) => Promise<TResult>): (args: TArgs) => Promise<TResult> {
   return async (args) => {
     // Mutations must satisfy both lifecycle ownership and durable-config
     // version guards before invoking any platform service manager.
@@ -500,8 +533,18 @@ function guardGatewayServiceMutation<TArgs extends { env?: GatewayServiceEnv }, 
     if (args.env && args.env !== process.env) {
       assertGatewayServiceMutationAllowed(action, args.env);
     }
-    await assertFutureConfigActionAllowed(action);
-    return await mutate(args);
+    const assertCaller = args.assertCurrent;
+    return await withGatewayServiceOperationLock(args.env ?? process.env, async (assertNative) => {
+      const assertCurrent = () => {
+        assertNative();
+        assertCaller?.();
+      };
+      await assertFutureConfigActionAllowed(action);
+      assertCurrent();
+      const result = await mutate({ ...args, assertCurrent });
+      assertCurrent();
+      return result;
+    });
   };
 }
 

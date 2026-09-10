@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import OpenClawKit
 import WebKit
 
 @MainActor
@@ -87,6 +88,21 @@ final class DashboardDeviceSettingsMessageHandler: NSObject, WKScriptMessageHand
                   owner.canUseDeviceSettings(sourceID: sourceID)
             else {
                 replyHandler(nil, "The device settings document is no longer available.")
+                return
+            }
+            if request == .installChromeExtension {
+                do {
+                    let result = try await ChromeExtensionSetup.install {
+                        owner.canUseDeviceSettings(sourceID: sourceID) && !Task.isCancelled
+                    }
+                    guard owner.canUseDeviceSettings(sourceID: sourceID), !Task.isCancelled else {
+                        replyHandler(nil, "The device settings document is no longer available.")
+                        return
+                    }
+                    try replyHandler(JSONSerialization.jsonObject(with: JSONEncoder().encode(result)), nil)
+                } catch {
+                    replyHandler(nil, error.localizedDescription)
+                }
                 return
             }
             await owner.applyDeviceSettingsRequest(request)

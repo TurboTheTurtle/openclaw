@@ -1,5 +1,6 @@
 // Shared daemon install test harness: mocks, module registrations, and assertion helpers.
 import { expect, vi } from "vitest";
+import type { GatewayServiceCommandConfig } from "../../daemon/service.js";
 import type { ResolvedGatewayAuth } from "../../gateway/auth.js";
 import { captureFullEnv } from "../../test-utils/env.js";
 import { createCliRuntimeCapture } from "../test-runtime-capture.js";
@@ -10,6 +11,7 @@ type DaemonActionResponse = Parameters<
 >[0];
 
 const resolveNodeStartupTlsEnvironmentMock = vi.hoisted(() => vi.fn());
+const runExecMock = vi.hoisted(() => vi.fn());
 const loadConfigMock = vi.hoisted(() => vi.fn());
 const readConfigFileSnapshotMock = vi.hoisted(() => vi.fn());
 const resolveGatewayPortMock = vi.hoisted(() => vi.fn(() => 18789));
@@ -82,12 +84,17 @@ const service = vi.hoisted(() => ({
   restart: vi.fn(async () => {}),
   stop: vi.fn(async () => {}),
   readDefinitionMutationCapability: vi.fn(async () => ({ kind: "writable" as const })),
-  readCommand: vi.fn(async () => null),
+  readCommand: vi.fn<() => Promise<GatewayServiceCommandConfig | null>>(async () => null),
   readRuntime: vi.fn(async () => ({ status: "stopped" as const })),
 }));
 
 vi.mock("../../bootstrap/node-startup-env.js", () => ({
   resolveNodeStartupTlsEnvironment: resolveNodeStartupTlsEnvironmentMock,
+}));
+
+vi.mock("../../process/exec.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../process/exec.js")>()),
+  runExec: runExecMock,
 }));
 
 vi.mock("../../config/io.js", () => ({
@@ -209,13 +216,13 @@ function readFirstInstallPlanArg(): Record<string, unknown> {
 }
 
 function readFirstConfigWriteParams(): {
-  nextConfig?: { gateway?: { mode?: string; auth?: { token?: string } } };
+  sourceConfig?: { gateway?: { mode?: string; auth?: { token?: string } } };
 } {
   const [params] = replaceConfigFileMock.mock.calls[0] ?? [];
   if (!params || typeof params !== "object") {
     throw new Error("expected first config write params");
   }
-  return params as { nextConfig?: { gateway?: { mode?: string; auth?: { token?: string } } } };
+  return params as { sourceConfig?: { gateway?: { mode?: string; auth?: { token?: string } } } };
 }
 
 function readFirstNodeStartupTlsEnvironmentArg(): Record<string, unknown> {
@@ -269,6 +276,7 @@ export {
   resolveGatewayBindHostMock,
   resolveGatewayPortMock,
   resolveNodeStartupTlsEnvironmentMock,
+  runExecMock,
   resolveSecretInputRefMock,
   resolveSecretRefValuesMock,
   runDaemonInstall,

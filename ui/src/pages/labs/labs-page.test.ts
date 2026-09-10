@@ -262,8 +262,8 @@ describe("LabsPage", () => {
     },
     {
       label: "CLI agents",
-      sourceConfig: {},
-      expectedPatch: { gateway: { cliAgents: { enabled: true } } },
+      sourceConfig: { gateway: { cliAgents: { enabled: false } } },
+      expectedPatch: { gateway: { cliAgents: { enabled: null } } },
       note: "labs: update cliAgents",
     },
     {
@@ -375,50 +375,67 @@ describe("LabsPage", () => {
   });
 });
 
+describe("LabsPage CLI agents enablement", () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it.each([
+    ["unset", true, {}, false],
+    ["empty object", true, { gateway: { cliAgents: {} } }, false],
+    ["explicit enabled", true, { gateway: { cliAgents: { enabled: true } } }, true],
+    ["explicit disabled", false, { gateway: { cliAgents: { enabled: false } } }, true],
+  ])("reads %s as %s with an enabled default", async (_label, expected, config, overridden) => {
+    const { page } = await mountPage(config);
+
+    expect(labToggle(page, "CLI agents").checked).toBe(expected);
+    expect(labRow(page, "CLI agents").textContent).toContain(
+      overridden ? "Default: Enabled" : "Using default: Enabled",
+    );
+  });
+
+  it("writes an explicit opt-out when disabling the default", async () => {
+    const { page, runtimeConfig } = await mountPage({});
+    const toggle = labToggle(page, "CLI agents");
+    expect(toggle.checked).toBe(true);
+
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+
+    await vi.waitFor(() => expect(runtimeConfig.patch).toHaveBeenCalledOnce());
+    expect(runtimeConfig.patch).toHaveBeenCalledWith({
+      raw: { gateway: { cliAgents: { enabled: false } } },
+      note: "labs: update cliAgents",
+    });
+  });
+});
+
 describe("LabsPage swarm enablement", () => {
   afterEach(() => {
     document.body.replaceChildren();
   });
 
   it.each([
-    { label: "unset", config: {}, expected: true, overridden: false },
-    { label: "empty object", config: { tools: { swarm: {} } }, expected: true, overridden: false },
-    {
-      label: "limits-only object",
-      config: { tools: { swarm: { maxConcurrent: 3 } } },
-      expected: true,
-      overridden: false,
-    },
-    { label: "boolean true", config: { tools: { swarm: true } }, expected: true, overridden: true },
-    {
-      label: "explicit enabled",
-      config: { tools: { swarm: { enabled: true } } },
-      expected: true,
-      overridden: true,
-    },
-    {
-      label: "boolean false",
-      config: { tools: { swarm: false } },
-      expected: false,
-      overridden: true,
-    },
-    {
-      label: "explicit disabled with limits",
-      config: { tools: { swarm: { enabled: false, maxConcurrent: 3 } } },
-      expected: false,
-      overridden: true,
-    },
-  ])(
-    "reads $label as $expected with an enabled default",
-    async ({ config, expected, overridden }) => {
-      const { page } = await mountPage(config);
+    ["unset", true, {}, false],
+    ["empty object", true, { tools: { swarm: {} } }, false],
+    ["limits-only object", true, { tools: { swarm: { maxConcurrent: 3 } } }, false],
+    ["boolean true", true, { tools: { swarm: true } }, true],
+    ["explicit enabled", true, { tools: { swarm: { enabled: true } } }, true],
+    ["boolean false", false, { tools: { swarm: false } }, true],
+    [
+      "explicit disabled with limits",
+      false,
+      { tools: { swarm: { enabled: false, maxConcurrent: 3 } } },
+      true,
+    ],
+  ])("reads %s as %s with an enabled default", async (_label, expected, config, overridden) => {
+    const { page } = await mountPage(config);
 
-      expect(labToggle(page, "Swarm").checked).toBe(expected);
-      expect(labRow(page, "Swarm").textContent).toContain(
-        overridden ? "Default: Enabled" : "Using default: Enabled",
-      );
-    },
-  );
+    expect(labToggle(page, "Swarm").checked).toBe(expected);
+    expect(labRow(page, "Swarm").textContent).toContain(
+      overridden ? "Default: Enabled" : "Using default: Enabled",
+    );
+  });
 
   it("writes an explicit opt-out when disabling the default", async () => {
     const { page, runtimeConfig } = await mountPage({});
@@ -462,22 +479,14 @@ describe("LabsPage code mode enablement", () => {
   // Mirrors resolveCodeModeConfig: omitted `enabled` is off for every object
   // shape, while explicit `true` and `"auto"` remain opt-ins.
   it.each([
-    { label: "unset", config: {}, expected: false },
-    { label: "empty object", config: { tools: { codeMode: {} } }, expected: false },
-    {
-      label: "object with options",
-      config: { tools: { codeMode: { timeoutMs: 5000 } } },
-      expected: false,
-    },
-    { label: "explicit true", config: { tools: { codeMode: { enabled: true } } }, expected: true },
-    {
-      label: "explicit disabled",
-      config: { tools: { codeMode: { enabled: false } } },
-      expected: false,
-    },
-    { label: "boolean shorthand false", config: { tools: { codeMode: false } }, expected: false },
-    { label: "auto shorthand", config: { tools: { codeMode: "auto" } }, expected: true },
-  ])("reads $label as $expected", async ({ config, expected }) => {
+    ["unset", false, {}],
+    ["empty object", false, { tools: { codeMode: {} } }],
+    ["object with options", false, { tools: { codeMode: { timeoutMs: 5000 } } }],
+    ["explicit true", true, { tools: { codeMode: { enabled: true } } }],
+    ["explicit disabled", false, { tools: { codeMode: { enabled: false } } }],
+    ["boolean shorthand false", false, { tools: { codeMode: false } }],
+    ["auto shorthand", true, { tools: { codeMode: "auto" } }],
+  ])("reads %s as %s", async (_label, expected, config) => {
     const { page, provider } = await mountPage(config);
 
     expect(codeModeToggle(page).checked).toBe(expected);
@@ -519,30 +528,18 @@ describe("LabsPage tool search enablement", () => {
   // readToolSearchConfig + readBoolean(raw.enabled, configured): an object that
   // configures anything besides `enabled` is already on at runtime.
   it.each([
-    { label: "boolean shorthand", config: { tools: { toolSearch: true } }, expected: true },
-    {
-      label: "explicit enabled",
-      config: { tools: { toolSearch: { enabled: true } } },
-      expected: true,
-    },
-    {
-      label: "mode without enabled",
-      config: { tools: { toolSearch: { mode: "tools" } } },
-      expected: true,
-    },
-    {
-      label: "explicit disabled",
-      config: { tools: { toolSearch: { enabled: false } } },
-      expected: false,
-    },
-    { label: "boolean false", config: { tools: { toolSearch: false } }, expected: false },
-    { label: "unset", config: {}, expected: false },
-    {
-      label: "local model without a global override",
-      config: { agents: { defaults: { model: "ollama/qwen3.5:4b" } } },
-      expected: false,
-    },
-  ])("reads $label as $expected", async ({ config, expected }) => {
+    ["boolean shorthand", true, { tools: { toolSearch: true } }],
+    ["explicit enabled", true, { tools: { toolSearch: { enabled: true } } }],
+    ["mode without enabled", true, { tools: { toolSearch: { mode: "tools" } } }],
+    ["explicit disabled", false, { tools: { toolSearch: { enabled: false } } }],
+    ["boolean false", false, { tools: { toolSearch: false } }],
+    ["unset", false, {}],
+    [
+      "local model without a global override",
+      false,
+      { agents: { defaults: { model: "ollama/qwen3.5:4b" } } },
+    ],
+  ])("reads %s as %s", async (_label, expected, config) => {
     const { page, provider } = await mountPage(config);
 
     expect(labToggle(page, "Tool Search for all models").checked).toBe(expected);

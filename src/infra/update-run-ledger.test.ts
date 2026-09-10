@@ -1,6 +1,7 @@
 import { fork } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UPDATE_RUN_PHASES } from "../../packages/gateway-protocol/src/update-run-vocabulary.js";
@@ -16,7 +17,9 @@ import {
   findActiveUpdateRun,
   finishUpdateRun,
   getUpdateRun,
+  getUpdateRunAsync,
   listUpdateRuns,
+  listUpdateRunsAsync,
   recordUpdateRunPhase,
   recordUpdateRunRepairAttempt,
   recordUpdateRunStep,
@@ -31,6 +34,37 @@ function isolatedOptions() {
   return { env: { OPENCLAW_STATE_DIR: tempDirs.make("openclaw-update-ledger-") } };
 }
 
+function snapshotDatabaseFiles(filename: string) {
+  const metadata = (pathname: string) => {
+    const stat = fs.lstatSync(pathname, { bigint: true });
+    return {
+      dev: stat.dev,
+      ino: stat.ino,
+      mode: stat.mode,
+      uid: stat.uid,
+      gid: stat.gid,
+      size: stat.size,
+      mtimeNs: stat.mtimeNs,
+      ctimeNs: stat.ctimeNs,
+    };
+  };
+  const directory = path.dirname(filename);
+  return {
+    directory: metadata(directory),
+    entries: fs.readdirSync(directory).toSorted(),
+    files: ["", "-wal", "-shm", "-journal"].map((suffix) => {
+      const pathname = `${filename}${suffix}`;
+      return fs.existsSync(pathname)
+        ? {
+            suffix,
+            metadata: metadata(pathname),
+            sha256: createHash("sha256").update(fs.readFileSync(pathname)).digest("hex"),
+          }
+        : { suffix, absent: true };
+    }),
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   closeOpenClawStateDatabaseForTest();
@@ -38,6 +72,25 @@ afterEach(() => {
 });
 
 describe("update run ledger", () => {
+  it.each(["failed", "succeeded", "rolled-back", "skipped"] as const)(
+    "keeps a terminal %s result unchanged for running-only boot observations",
+    (status) => {
+      const options = isolatedOptions();
+      const run = createUpdateRun({ trigger: "cli" }, options);
+      const terminal = finishUpdateRun(run.runId, { status, reason: "original-result" }, options);
+      const actual = recordUpdateRunVerification(
+        run.runId,
+        { booted: true, serviceRunning: true, pid: 111, doctorHint: "unrelated later boot" },
+        { ...options, onlyIfRunning: true },
+      );
+      expect(actual).toEqual(terminal);
+      expect(getUpdateRun(run.runId, options)).toEqual(terminal);
+      const notice = recordUpdateRunVerification(run.runId, { noticeDelivered: true }, options);
+      expect(notice.verification).toEqual({ ...terminal.verification, noticeDelivered: true });
+      expect(notice.finishedAtMs).toBe(terminal.finishedAtMs);
+    },
+  );
+
   it("keeps reads non-creating and adds the table on first write without changing the older schema", () => {
     const options = isolatedOptions();
     const runId = randomUUID();
@@ -46,6 +99,7 @@ describe("update run ledger", () => {
     expect(listUpdateRuns({}, options)).toEqual([]);
     expect(findActiveUpdateRun(options)).toBeUndefined();
     expect(fs.existsSync(filename)).toBe(false);
+    expect(fs.readdirSync(options.env.OPENCLAW_STATE_DIR)).toEqual([]);
 
     const initial = openOpenClawStateDatabase(options);
     const hasLedger = () =>
@@ -62,7 +116,9 @@ describe("update run ledger", () => {
       .join(";\n");
     expect(listUpdateRuns({}, options)).toEqual([]);
     expect(hasLedger()).toBeUndefined();
-    expect(() => recordUpdateRunPhase(runId, "staging", {}, options)).toThrow("Unknown update run");
+    expect(() => recordUpdateRunPhase(runId, "staging", {}, options)).toThrow(
+      "missing table update_runs",
+    );
     expect(hasLedger()).toBeUndefined();
 
     const created = createUpdateRun({ runId, trigger: "cli" }, options);
@@ -80,6 +136,129 @@ describe("update run ledger", () => {
     expect(getUpdateRun(runId, options)).toEqual(created);
     expect(createUpdateRun({ runId, trigger: "api" }, options)).toEqual(created);
     expect(listUpdateRuns({}, options)).toEqual([created]);
+  });
+
+  it.each(
+    (["get", "list", "active", "get-async", "list-async"] as const).flatMap((reader) =>
+      [false, true].map((retainedWal) => ({ reader, retainedWal })),
+    ),
+  )(
+    "keeps cold $reader reads artifact-preserving with retained WAL=$retainedWal",
+    async ({ reader, retainedWal }) => {
+      const sourceOptions = isolatedOptions();
+      const created = createUpdateRun({ trigger: "cli" }, sourceOptions);
+      const sourcePath = resolveOpenClawStateSqlitePath(sourceOptions.env);
+      let options = sourceOptions;
+      let expected = created;
+      if (retainedWal) {
+        const { db } = openOpenClawStateDatabase(sourceOptions);
+        db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+        expected = recordUpdateRunPhase(created.runId, "staging", {}, sourceOptions);
+        options = isolatedOptions();
+        const filename = resolveOpenClawStateSqlitePath(options.env);
+        fs.mkdirSync(path.dirname(filename), { recursive: true });
+        // Capture committed WAL bytes while the only producer is idle, then close
+        // it before observing the copy. Omitting WAL must not return stale history.
+        fs.copyFileSync(sourcePath, filename);
+        fs.copyFileSync(`${sourcePath}-wal`, `${filename}-wal`);
+        const mainOnly = path.join(tempDirs.make("openclaw-update-main-only-"), "main.sqlite");
+        fs.copyFileSync(sourcePath, mainOnly);
+        const control = new DatabaseSync(mainOnly, { readOnly: true });
+        try {
+          expect(
+            control.prepare("SELECT phase FROM update_runs WHERE run_id = ?").get(created.runId),
+          ).toEqual({ phase: "requested" });
+        } finally {
+          control.close();
+        }
+      }
+      closeOpenClawStateDatabaseForTest();
+      const filename = resolveOpenClawStateSqlitePath(options.env);
+      expect(fs.existsSync(`${filename}-shm`)).toBe(false);
+      expect(fs.existsSync(`${filename}-wal`)).toBe(retainedWal);
+      const before = snapshotDatabaseFiles(filename);
+      const result =
+        reader === "get"
+          ? getUpdateRun(created.runId, options)
+          : reader === "list"
+            ? listUpdateRuns({}, options)
+            : reader === "get-async"
+              ? await getUpdateRunAsync(created.runId, options)
+              : reader === "list-async"
+                ? await listUpdateRunsAsync({}, options)
+                : findActiveUpdateRun(options);
+      expect(result).toEqual(reader === "list" || reader === "list-async" ? [expected] : expected);
+      expect(snapshotDatabaseFiles(filename)).toEqual(before);
+    },
+  );
+
+  it("reads rows persisted with the retired inferenceProbe verification fact", () => {
+    const options = isolatedOptions();
+    const run = createUpdateRun({ trigger: "cli" }, options);
+    recordUpdateRunVerification(run.runId, { serviceRunning: true }, options);
+    // Rows written before verification stopped recording inference keep the key;
+    // the non-strict record schema drops it instead of rejecting the run.
+    openOpenClawStateDatabase(options)
+      .db.prepare("UPDATE update_runs SET verification_json = ? WHERE run_id = ?")
+      .run(JSON.stringify({ serviceRunning: true, inferenceProbe: "passed" }), run.runId);
+
+    expect(getUpdateRun(run.runId, options)?.verification).toEqual({ serviceRunning: true });
+  });
+
+  it("leaves a cold store without the history table unchanged", async () => {
+    const options = isolatedOptions();
+    const { db } = openOpenClawStateDatabase(options);
+    expect(
+      db.prepare("SELECT 1 FROM sqlite_schema WHERE name = 'update_runs'").get(),
+    ).toBeUndefined();
+    closeOpenClawStateDatabaseForTest();
+    const filename = resolveOpenClawStateSqlitePath(options.env);
+    const before = snapshotDatabaseFiles(filename);
+    expect(getUpdateRun(randomUUID(), options)).toBeUndefined();
+    expect(listUpdateRuns({}, options)).toEqual([]);
+    expect(findActiveUpdateRun(options)).toBeUndefined();
+    expect(await getUpdateRunAsync(randomUUID(), options)).toBeUndefined();
+    expect(await listUpdateRunsAsync({}, options)).toEqual([]);
+    expect(snapshotDatabaseFiles(filename)).toEqual(before);
+  });
+
+  it("keeps the idle cached writer usable after history reads", () => {
+    const options = isolatedOptions();
+    const created = createUpdateRun({ trigger: "cli" }, options);
+    const { db } = openOpenClawStateDatabase(options);
+    const filename = resolveOpenClawStateSqlitePath(options.env);
+    const before = snapshotDatabaseFiles(filename);
+    expect(getUpdateRun(created.runId, options)).toEqual(created);
+    expect(listUpdateRuns({}, options)).toEqual([created]);
+    expect(findActiveUpdateRun(options)).toEqual(created);
+    expect(snapshotDatabaseFiles(filename)).toEqual(before);
+    expect(db.isOpen).toBe(true);
+    expect(recordUpdateRunPhase(created.runId, "staging", {}, options).phase).toBe("staging");
+  });
+
+  it("reads committed history without consuming the cached writer's transaction", () => {
+    const options = isolatedOptions();
+    const created = createUpdateRun({ trigger: "cli" }, options);
+    const { db } = openOpenClawStateDatabase(options);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("UPDATE update_runs SET phase = 'staging' WHERE run_id = ?").run(created.runId);
+      expect(getUpdateRun(created.runId, options)).toEqual(created);
+      expect(listUpdateRuns({}, options)).toEqual([created]);
+      expect(findActiveUpdateRun(options)).toEqual(created);
+      expect(db.isTransaction).toBe(true);
+      expect(
+        db.prepare("SELECT phase FROM update_runs WHERE run_id = ?").get(created.runId),
+      ).toEqual({
+        phase: "staging",
+      });
+      db.exec("COMMIT");
+    } finally {
+      if (db.isTransaction) {
+        db.exec("ROLLBACK");
+      }
+    }
+    expect(getUpdateRun(created.runId, options)?.phase).toBe("staging");
   });
 
   it("keeps phase order and merges repeated steps while preserving terminal outcomes and later boot facts", () => {
@@ -160,7 +339,18 @@ describe("update run ledger", () => {
       { booted: true, versionMatch: true },
       options,
     );
-    expect(booted).toMatchObject({
+    expect(booted.confirmedAtMs).toBeNull();
+    const verified = recordUpdateRunVerification(
+      run.runId,
+      {
+        readyz: true,
+        settled: true,
+        channelsReady: true,
+        pluginErrors: [],
+      },
+      options,
+    );
+    expect(verified).toMatchObject({
       status: "failed",
       reason: "doctor-failed",
       finishedAtMs: 4_000,
@@ -224,6 +414,28 @@ describe("update run ledger", () => {
     },
   );
 
+  it("records post-activation repair without reopening activation or retaining completed repair timestamps", () => {
+    const options = isolatedOptions();
+    const run = createUpdateRun({ trigger: "cli" }, options);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(run.createdAtMs + 100);
+    recordUpdateRunPhase(run.runId, "validating", {}, options);
+    recordUpdateRunPhase(run.runId, "repairing", {}, options);
+    recordUpdateRunPhase(run.runId, "activating", {}, options);
+    recordUpdateRunPhase(run.runId, "verifying", {}, options);
+    clock.mockReturnValue(run.createdAtMs + 200);
+    const repairing = recordUpdateRunPhase(run.runId, "repairing", {}, options);
+    expect(repairing.phase).toBe("repairing");
+    expect(repairing.steps.find((step) => step.step === "repairing")).toEqual({
+      step: "repairing",
+      status: "in_progress",
+      startedAtMs: run.createdAtMs + 200,
+    });
+    for (const phase of ["activating", "restarting", "validating"] as const) {
+      expect(recordUpdateRunPhase(run.runId, phase, {}, options).phase).toBe("repairing");
+    }
+    expect(recordUpdateRunPhase(run.runId, "verifying", {}, options).phase).toBe("verifying");
+  });
+
   it("lists newest runs deterministically and excludes terminal runs from active discovery", () => {
     const options = isolatedOptions();
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
@@ -251,11 +463,19 @@ describe("update run ledger", () => {
     { name: "diagnostic bytes", count: 30, detail: "diagnostic ".repeat(80) },
     { name: "retained phase bytes", count: 0, detail: "🦞".repeat(512) },
   ])(
-    "retains notice custody and phases across the $name bound and database reopen",
+    "retains notice custody, restoration proof, and finalization history across the $name bound and database reopen",
     ({ count, detail }) => {
       const options = isolatedOptions();
       const run = createUpdateRun({ trigger: "chat" }, options);
-      const notices = ["notice:ack", "notice:activating", "notice:verifying"];
+      const notices = [
+        "notice:ack",
+        "notice:activating",
+        "notice:verifying",
+        "previous generation restoration",
+        "finalize:doctor",
+        "finalize:future-phase",
+        "post-update verification",
+      ];
       for (const step of [...UPDATE_RUN_PHASES, ...notices]) {
         recordUpdateRunStep(run.runId, { step, status: "completed", detail }, options);
       }
@@ -274,6 +494,27 @@ describe("update run ledger", () => {
       expect(persisted.steps.every((step) => step.status === "completed")).toBe(true);
       expect(persisted.steps.length).toBeLessThanOrEqual(128);
       expect(Buffer.byteLength(JSON.stringify(persisted.steps))).toBeLessThanOrEqual(16 * 1024);
+    },
+  );
+
+  it.each(["bytes", "count"] as const)(
+    "rejects oversized retained step %s without changing the row",
+    (bound) => {
+      const options = isolatedOptions();
+      let saved = createUpdateRun({ trigger: "cli" }, options);
+      expect(() => {
+        for (let index = 0; index < 130; index++) {
+          saved = recordUpdateRunStep(
+            saved.runId,
+            {
+              step: `finalize:${index}${bound === "bytes" ? "界".repeat(330) : ""}`,
+              status: "completed",
+            },
+            options,
+          );
+        }
+      }).toThrow(/retained step.*limit/);
+      expect(getUpdateRun(saved.runId, options)).toEqual(saved);
     },
   );
 
@@ -496,7 +737,21 @@ describe("update run ledger", () => {
           code === 0 ? resolve() : reject(new Error(`${role} exited ${code}: ${output}`)),
         );
       });
-      return { child, ready, exited };
+      const written = ready.then(() =>
+        Promise.race([
+          new Promise<void>((resolve, reject) => {
+            child.once("message", (message) =>
+              message === "written"
+                ? resolve()
+                : reject(new Error(`Unexpected ${role} write message`)),
+            );
+          }),
+          exited.then(() => {
+            throw new Error(`${role} exited before acknowledging writes: ${output}`);
+          }),
+        ]),
+      );
+      return { child, ready, written, exited };
     });
     const deadline = setTimeout(() => {
       for (const { child } of children) {
@@ -504,11 +759,17 @@ describe("update run ledger", () => {
       }
     }, 20_000);
     try {
-      await Promise.all(children.map(({ ready }) => ready));
+      const allWritten = Promise.all(children.map(({ written }) => written));
+      await Promise.race([Promise.all(children.map(({ ready }) => ready)), allWritten]);
       for (const { child } of children) {
         child.send("start");
       }
-      await Promise.all(children.map(({ exited }) => exited));
+      await allWritten;
+      // Writes stay concurrent; handle retirement must not race another lifecycle writer.
+      for (const { child, exited } of children) {
+        child.send("close");
+        await exited;
+      }
       const persisted = getUpdateRun(run.runId, options);
       const expected = ["cli", "gateway"].flatMap((role) =>
         Array.from({ length: 16 }, (_, index) => `${role}-${index}`),
@@ -527,6 +788,9 @@ describe("update run ledger", () => {
           serviceRunning: true,
           versionMatch: true,
           channelsReady: true,
+          settled: true,
+          readyz: true,
+          pluginErrors: [],
         },
       } satisfies Partial<UpdateRunRecord>);
       expect(persisted?.confirmedAtMs).toEqual(expect.any(Number));
@@ -537,7 +801,7 @@ describe("update run ledger", () => {
           child.kill();
         }
       }
-      await Promise.allSettled(children.map(({ exited }) => exited));
+      await Promise.allSettled(children.flatMap(({ written, exited }) => [written, exited]));
     }
   }, 30_000);
 });

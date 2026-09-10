@@ -758,7 +758,6 @@ describe("maybeRepairGatewayDaemon", () => {
     };
     service.readCommand.mockResolvedValue(existingCommand);
     vi.mocked(resolveGatewayInstallToken).mockResolvedValueOnce({
-      tokenRefConfigured: false,
       warnings: [],
     });
     vi.mocked(buildGatewayInstallPlan).mockResolvedValueOnce({

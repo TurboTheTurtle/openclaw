@@ -26,6 +26,7 @@ import { CommandLane } from "../../process/lanes.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import { removeCronRunContinuationSessionIfIdle } from "../../tasks/cron-run-continuation-cleanup.js";
 import { createCronRunDiagnosticsFromError, mergeCronRunDiagnostics } from "../run-diagnostics.js";
+import { resolveCronRunErrorReason } from "../run-error-reason.js";
 import {
   normalizeCronRunErrorText,
   resolveCronAbortReasonText,
@@ -267,7 +268,6 @@ export async function runCronIsolatedAgentTurn(
               timeoutMs: prepared.context.timeoutMs,
               runTimeoutOverrideMs: prepared.context.runTimeoutOverrideMs,
               suppressExecNotifyOnExit: prepared.context.suppressExecNotifyOnExit,
-              pluginRegistry: prepared.context.pluginRegistry,
               executionIdentity: params.executionIdentity,
             };
             const execution = await prepared.context.sessionWorkAdmission.run(() =>
@@ -304,6 +304,11 @@ export async function runCronIsolatedAgentTurn(
             const isCronLaneTimeout =
               isAborted() || isCommandLaneTaskTimeoutError(err, CommandLane.CronNested);
             const error = isCronLaneTimeout ? abortReason() : normalizeCronRunErrorText(err);
+            // Preserve the provider's closed reason before user-facing text replaces the error object.
+            const errorReason = resolveCronRunErrorReason(
+              isCronLaneTimeout ? error : err,
+              prepared.context.liveSelection.provider,
+            );
             outcome = "error";
             outcomeError = error;
             const admissionDisposition =
@@ -315,6 +320,9 @@ export async function runCronIsolatedAgentTurn(
             return prepared.context.withRunSession({
               status: "error",
               error,
+              errorClassification: errorReason
+                ? { kind: "reason", reason: errorReason }
+                : undefined,
               executionStarted,
               ...(admissionDisposition ? { admissionDisposition } : {}),
               // Carry the already-resolved run model into the error/timeout row so

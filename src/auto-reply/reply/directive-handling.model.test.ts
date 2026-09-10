@@ -59,6 +59,14 @@ function hasAllowedPluginForAuthTest(cfg: unknown, pluginId: string): boolean {
   return Array.isArray(plugins?.allow) && plugins.allow.includes(pluginId);
 }
 
+// Runtime eligibility belongs to the published-owner tests; these cases exercise its consumers.
+vi.mock("../../agents/model-runtime-choice.js", () => ({
+  preparePublishedModelRuntimeChoice: vi.fn(async () => ({
+    kind: "ready",
+    validate: () => undefined,
+  })),
+}));
+
 vi.mock("../../agents/auth-profiles.js", () => {
   const store = () => ({
     version: 1,
@@ -174,7 +182,20 @@ vi.mock("./directive-handling.auth.js", () => ({
   },
 }));
 
-vi.mock("../../agents/auth-profiles/store.js", () => {
+vi.mock("../../agents/auth-profiles/store.js", async (importOriginal) => {
+  const store = () => ({
+    version: 1,
+    profiles: authProfilesStoreMock.profiles,
+  });
+  return {
+    ...(await importOriginal<typeof import("../../agents/auth-profiles/store.js")>()),
+    findPersistedAuthProfileCredential: ({ profileId }: { profileId: string }) =>
+      authProfilesStoreMock.profiles[profileId],
+    getRuntimeAuthProfileStoreSnapshot: store,
+    hasAnyAuthProfileStoreSource: () => Object.keys(authProfilesStoreMock.profiles).length > 0,
+  };
+});
+vi.mock("../../agents/auth-profiles/store-runtime.js", () => {
   const store = () => ({
     version: 1,
     profiles: authProfilesStoreMock.profiles,
@@ -182,10 +203,6 @@ vi.mock("../../agents/auth-profiles/store.js", () => {
   return {
     ensureAuthProfileStore: store,
     ensureAuthProfileStoreForLocalUpdate: store,
-    findPersistedAuthProfileCredential: ({ profileId }: { profileId: string }) =>
-      authProfilesStoreMock.profiles[profileId],
-    getRuntimeAuthProfileStoreSnapshot: store,
-    hasAnyAuthProfileStoreSource: () => Object.keys(authProfilesStoreMock.profiles).length > 0,
     loadAuthProfileStore: store,
     loadAuthProfileStoreForRuntime: store,
     loadAuthProfileStoreForSecretsRuntime: store,
@@ -331,6 +348,7 @@ import {
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { withEnvAsync } from "../../test-utils/env.js";
 import type { ElevatedLevel } from "../thinking.js";
+import { createModelSelectionStateFixture } from "./model-selection.test-support.js";
 
 let handleDirectiveOnly: typeof import("./directive-handling.impl.js").handleDirectiveOnly;
 let maybeHandleModelDirectiveInfo: typeof import("./directive-handling.model.js").maybeHandleModelDirectiveInfo;
@@ -339,7 +357,6 @@ let buildModelAliasIndex: typeof import("../../agents/model-selection.js").build
 let resolveModelSelectionFromDirective: typeof import("./directive-handling.model-selection.js").resolveModelSelectionFromDirective;
 let parseInlineSessionDirectives: typeof import("./directive-handling.parse.js").parseInlineSessionDirectives;
 let applyInlineDirectiveOverrides: typeof import("./get-reply-directives-apply.js").applyInlineDirectiveOverrides;
-let createFastTestModelSelectionState: typeof import("./model-selection.js").createFastTestModelSelectionState;
 
 beforeAll(async () => {
   ({ handleDirectiveOnly } = await import("./directive-handling.impl.js"));
@@ -350,7 +367,6 @@ beforeAll(async () => {
     await import("./directive-handling.model-selection.js"));
   ({ parseInlineSessionDirectives } = await import("./directive-handling.parse.js"));
   ({ applyInlineDirectiveOverrides } = await import("./get-reply-directives-apply.js"));
-  ({ createFastTestModelSelectionState } = await import("./model-selection.js"));
 });
 const queueMocks = vi.hoisted(() => ({
   refreshQueuedFollowupSession: vi.fn(),
@@ -368,14 +384,52 @@ vi.mock("../../agents/agent-scope.js", () => ({
   resolveSessionAgentId: vi.fn(() => "main"),
 }));
 
-vi.mock("../../agents/prepared-model-catalog.js", () => {
-  const loadModelCatalog = vi.fn(async () => [
+vi.mock("../../agents/prepared-model-catalog.js", async () => {
+  const { setPreparedModelRuntimeAuthStore } = await vi.importActual<
+    typeof import("../../agents/prepared-model-runtime-auth.js")
+  >("../../agents/prepared-model-runtime-auth.js");
+  const { createPluginMetadataSnapshotFixture } =
+    await import("../../plugins/plugin-metadata.test-support.js");
+  const { loadPluginMetadataSnapshot } = await import("../../plugins/plugin-metadata-snapshot.js");
+  const entries = [
     { provider: "anthropic", id: "claude-opus-4-6", name: "Claude Opus" },
     { provider: "localai", id: "ultra-chat", name: "Ultra Chat" },
-  ]);
+  ];
+  const loadModelCatalog = vi.fn(async () => entries);
   return {
-    loadPreparedModelCatalog: loadModelCatalog,
+    readPreparedModelCatalog: loadModelCatalog,
     loadProviderScopedThinkingCatalog: loadModelCatalog,
+    getPublishedPreparedModelCatalogOwnerSnapshot: (params: {
+      config: OpenClawConfig;
+      agentId?: string;
+      agentDir?: string;
+      workspaceDir?: string;
+    }) => {
+      const owner = {
+        config: params.config,
+        observationConfig: params.config,
+        agentId: params.agentId ?? "main",
+        agentDir: params.agentDir ?? "/tmp/agent",
+        workspaceDir: params.workspaceDir ?? "/tmp",
+        modelCatalog: { entries, routeVariants: entries },
+        authModes: {},
+        metadataSnapshot: params.workspaceDir
+          ? loadPluginMetadataSnapshot({
+              config: params.config,
+              workspaceDir: params.workspaceDir,
+              allowCurrent: false,
+              preferPersisted: false,
+            })
+          : createPluginMetadataSnapshotFixture(),
+        isCurrent: () => true,
+      };
+      setPreparedModelRuntimeAuthStore(owner, {
+        version: 1,
+        profiles: authProfilesStoreMock.profiles,
+      });
+      return owner;
+    },
+    materializePreparedModelCatalogOwner: (owner: object) => owner,
     withPreparedModelCatalogOwner: async (
       _params: unknown,
       read: (owner: {
@@ -384,9 +438,9 @@ vi.mock("../../agents/prepared-model-catalog.js", () => {
         isCurrent: () => boolean;
       }) => unknown,
     ) => {
-      const entries = await loadModelCatalog();
+      const catalog = await loadModelCatalog();
       return read({
-        modelCatalog: { entries, routeVariants: entries },
+        modelCatalog: { entries: catalog, routeVariants: catalog },
         authModes: {},
         isCurrent: () => true,
       });
@@ -619,7 +673,7 @@ async function persistModelDirectiveForTest(params: {
   const model = params.model ?? "claude-opus-4-6";
   const agentId = params.agentId ?? "main";
   const sessionKey = `agent:${agentId}:dm:1`;
-  const modelState = createFastTestModelSelectionState({
+  const modelState = createModelSelectionStateFixture({
     agentCfg: cfg.agents?.defaults,
     provider,
     model,
@@ -1127,7 +1181,9 @@ describe("/model chat UX", () => {
       allowedModelCatalog: policy.allowedCatalog,
     });
 
-    expect(policy.allowsKey("openrouter/meta-llama/llama-3.3-70b-instruct:free")).toBe(true);
+    expect(
+      policy.allows({ provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" }),
+    ).toBe(true);
     expect(reply?.text).toContain("openrouter/meta-llama/llama-3.3-70b-instruct:free");
     expect(reply?.text).not.toContain("anthropic/openrouter:free");
   });

@@ -2,14 +2,14 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { resolveLegacyGatewayLaunchAgentLabels } from "./constants.js";
-import { isCurrentProcessLaunchdServiceLabel } from "./launchd-current-service.js";
+import { isCurrentProcessInsideLaunchdService } from "./launchd-current-service.js";
 import {
   execLaunchctl,
   formatLaunchctlResultDetail,
   isLaunchctlNotLoaded,
 } from "./launchd-exec.js";
 import { assertValidLaunchAgentLabel, resolveLaunchAgentLabel } from "./launchd-label.js";
+import { parseLaunchdPlistLabel } from "./launchd-plist.js";
 import {
   bootstrapLaunchAgentOrThrow,
   probeLaunchAgentState,
@@ -25,7 +25,6 @@ import {
   resolveLaunchAgentEnvFilePath,
   resolveLaunchAgentEnvWrapperPath,
   resolveLaunchAgentPlistPath,
-  resolveLaunchAgentPlistPathForLabel,
   writeLaunchAgentPlist,
 } from "./launchd-service-files.js";
 import { assertNoSystemLaunchDaemonOwnership } from "./launchd-system.js";
@@ -43,7 +42,7 @@ export async function uninstallLaunchAgent({
   env,
   stdout,
 }: GatewayServiceManageArgs): Promise<void> {
-  assertExternalLaunchAgentMutation(env, "uninstall");
+  await assertExternalLaunchAgentMutation(env, "uninstall");
   const domain = resolveLaunchAgentGuiDomain();
   const label = resolveLaunchAgentLabel(env);
   let preflight: LaunchAgentRemovalPreflight;
@@ -106,22 +105,27 @@ function createLaunchAgentRemovalError(error: unknown): Error {
     `LaunchAgent removal failed${code ? ` (${code})` : ""}. Check permissions and retry.`,
   );
 }
-function currentGatewayLaunchAgentLabel(
+async function currentGatewayLaunchAgentLabel(
   targetEnv: Record<string, string | undefined>,
-): string | undefined {
+): Promise<string | undefined> {
   const configuredCurrentLabel = process.env.OPENCLAW_LAUNCHD_LABEL?.trim();
   const candidates = new Set([
     resolveLaunchAgentLabel(targetEnv),
     ...(configuredCurrentLabel ? [assertValidLaunchAgentLabel(configuredCurrentLabel)] : []),
   ]);
-  return [...candidates].find((label) => isCurrentProcessLaunchdServiceLabel(label, process.env));
+  for (const label of candidates) {
+    if (await isCurrentProcessInsideLaunchdService(label, process.env)) {
+      return label;
+    }
+  }
+  return undefined;
 }
 
-function assertExternalLaunchAgentMutation(
+async function assertExternalLaunchAgentMutation(
   env: Record<string, string | undefined>,
   action: "install" | "uninstall",
-): void {
-  const currentLabel = currentGatewayLaunchAgentLabel(env);
+): Promise<void> {
+  const currentLabel = await currentGatewayLaunchAgentLabel(env);
   if (!currentLabel) {
     return;
   }
@@ -150,6 +154,8 @@ type LaunchAgentInstallSnapshot = {
   plistContents: Buffer | null;
   envFileContents: Buffer | null;
   wrapperContents: Buffer | null;
+  // A same-label definition at the pre-canonical external-home path must be
+  // restored if the canonical cutover cannot activate.
   legacy: Array<{
     label: string;
     plistPath: string;
@@ -221,6 +227,13 @@ async function readRelocatedLaunchAgentPlistForInstall(params: {
   const contents = await readExistingLaunchAgentPlist(plistPath);
   if (contents === null) {
     return null;
+  }
+  const relocatedLabel = parseLaunchdPlistLabel(contents.toString("utf8"));
+  if (relocatedLabel === null) {
+    throw new Error("The pre-migration LaunchAgent definition cannot be safely inspected.");
+  }
+  if (relocatedLabel !== params.label) {
+    throw new Error("The pre-migration LaunchAgent definition does not match the expected label.");
   }
   const command = await readLaunchAgentProgramArgumentsAtPath(
     params.env,
@@ -461,7 +474,10 @@ async function activateLaunchAgent(params: {
 export async function installLaunchAgent(
   args: GatewayServiceInstallArgs,
 ): Promise<{ plistPath: string }> {
-  assertExternalLaunchAgentMutation(args.env, "install");
+  if (args.beforeLoad) {
+    throw new Error("Deferred native service load is not supported on this platform.");
+  }
+  await assertExternalLaunchAgentMutation(args.env, "install");
   const targetPlistPath = resolveLaunchAgentPlistPath(args.env);
   const previousContents = await readExistingLaunchAgentPlist(targetPlistPath);
   const label = resolveLaunchAgentLabel(args.env);
@@ -481,54 +497,18 @@ export async function installLaunchAgent(
     );
   }
   // Plist, generated environment files, and launchd registration form one cutover.
-  // Capture every prior owner before publication so any later failure can restore it.
-  const legacy = [
-    ...(relocated
-      ? [
-          {
-            label,
-            plistPath: relocated.plistPath,
-            contents: relocated.contents,
-            loaded: sameLabelLoaded,
-          },
-        ]
-      : []),
-    ...(
-      await Promise.all(
-        resolveLegacyGatewayLaunchAgentLabels(args.env.OPENCLAW_PROFILE).map(
-          async (legacyLabel) => {
-            const paths = new Set([
-              resolveLaunchAgentPlistPathForLabel(args.env, legacyLabel),
-              resolvePreCanonicalLaunchAgentPlistPath(args.env, legacyLabel),
-            ]);
-            const definitions = await Promise.all(
-              [...paths].map(async (plistPath) => ({
-                label: legacyLabel,
-                plistPath,
-                contents: await readExistingLaunchAgentPlist(plistPath),
-              })),
-            );
-            const existing = definitions.filter((definition) => definition.contents !== null);
-            const loaded = await snapshotLaunchAgentLoadedState(
-              existing[0]?.contents ?? null,
-              `${domain}/${legacyLabel}`,
-            );
-            if (loaded && existing.length > 1) {
-              throw new Error(
-                `LaunchAgent ${legacyLabel} has multiple prior definitions; refusing an install that cannot identify the loaded definition for rollback.`,
-              );
-            }
-            return definitions.map((definition) => ({
-              label: definition.label,
-              plistPath: definition.plistPath,
-              contents: definition.contents,
-              loaded: loaded && definition.contents !== null,
-            }));
-          },
-        ),
-      )
-    ).flat(),
-  ];
+  // Capture the pre-canonical same-label owner before publication so any later
+  // failure can restore it. Alias-label recovery was intentionally retired.
+  const legacy = relocated
+    ? [
+        {
+          label,
+          plistPath: relocated.plistPath,
+          contents: relocated.contents,
+          loaded: sameLabelLoaded,
+        },
+      ]
+    : [];
   const snapshot: LaunchAgentInstallSnapshot = {
     plistContents: previousContents,
     envFileContents: await readExistingLaunchAgentPlist(

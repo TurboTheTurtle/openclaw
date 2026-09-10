@@ -810,7 +810,7 @@ describe("resolveBuildAllSteps", () => {
       OPENCLAW_PRESERVE_CLI_STARTUP_METADATA: "1",
     });
 
-    for (const profile of ["ciArtifacts", "sourcePerformance", "cliStartup"]) {
+    for (const profile of ["ciArtifacts", "cliStartup"]) {
       const tsdown = resolveBuildAllSteps(profile).find((step) => step.label === "tsdown");
       if (!tsdown) {
         throw new Error(`Missing ${profile} tsdown step`);
@@ -821,7 +821,7 @@ describe("resolveBuildAllSteps", () => {
       });
     }
 
-    for (const profile of ["gatewayWatch", "qaRuntime"]) {
+    for (const profile of ["gatewayWatch", "qaRuntime", "sourcePerformance"]) {
       const tsdown = resolveBuildAllSteps(profile).find((step) => step.label === "tsdown");
       if (!tsdown) {
         throw new Error(`Missing ${profile} tsdown step`);
@@ -1038,7 +1038,7 @@ describe("resolveBuildAllSteps", () => {
     );
   });
 
-  it("uses a source performance profile with QA assets and immutable build provenance", () => {
+  it("uses a source performance profile without precomputed CLI help", () => {
     expect(resolveBuildAllSteps("sourcePerformance").map((step) => step.label)).toEqual([
       "plugins:assets:build",
       "tsdown",
@@ -1049,7 +1049,6 @@ describe("resolveBuildAllSteps", () => {
       "build-stamp",
       "runtime-postbuild-stamp",
       "write-build-info",
-      "write-cli-startup-metadata",
     ]);
   });
 
@@ -1794,18 +1793,28 @@ describe("resolveBuildStepCacheState", () => {
       const cacheState = resolveBuildStepCacheState(alwaysRestoreStep, { rootDir });
       writeBuildStepCacheStamp(alwaysRestoreStep, cacheState, { rootDir });
       fs.writeFileSync(outputPath, "overwritten by earlier build step");
+      const obsoletePath = path.join(rootDir, "dist/obsolete.js");
+      fs.writeFileSync(obsoletePath, "obsolete output");
 
-      const restorable = resolveBuildStepCacheState(alwaysRestoreStep, { rootDir });
+      const readSpy = vi.spyOn(fs, "readFileSync");
+      let restorable: ReturnType<typeof resolveBuildStepCacheState>;
+      try {
+        restorable = resolveBuildStepCacheState(alwaysRestoreStep, { rootDir });
+        expect(readSpy.mock.calls.map(([file]) => file)).not.toContain(outputPath);
+      } finally {
+        readSpy.mockRestore();
+      }
       expect(restorable.cacheable).toBe(true);
       expect(restorable.fresh).toBe(true);
       expect(restorable.reason).toBe("fresh-cache");
-      expect(restorable.outputFiles).toBe(1);
+      expect(restorable.outputFiles).toBe(2);
       expect(restorable.restorable).toBe(true);
-      expect(restorable.relativeOutputFiles).toEqual(["dist/output.js"]);
+      expect(restorable.relativeOutputFiles).toEqual(["dist/obsolete.js", "dist/output.js"]);
       expect(restorable.stampedOutputs).toEqual(["dist/output.js"]);
 
       expect(restoreBuildStepCacheOutputs(restorable, { rootDir })).toBe(true);
       expect(fs.readFileSync(outputPath, "utf8")).toBe("output");
+      expect(fs.existsSync(obsoletePath)).toBe(false);
     });
   });
 

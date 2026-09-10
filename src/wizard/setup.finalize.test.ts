@@ -66,7 +66,7 @@ const resolveDefaultModelAuthStatus = vi.hoisted(() =>
   })),
 );
 const resolveDefaultModelCatalogFacts = vi.hoisted(() =>
-  vi.fn<() => DefaultModelCatalogFacts>(() => ({ found: true })),
+  vi.fn<() => DefaultModelCatalogFacts>(() => ({})),
 );
 const loadModelCatalog = vi.hoisted(() =>
   vi.fn<(_params?: unknown) => Promise<unknown[]>>(async () => []),
@@ -92,8 +92,6 @@ const gatewayServiceReadCommand = vi.hoisted(() => vi.fn());
 const startGatewayService = vi.hoisted(() => vi.fn());
 const resolveGatewayInstallToken = vi.hoisted(() =>
   vi.fn(async () => ({
-    token: undefined,
-    tokenRefConfigured: true,
     warnings: [],
   })),
 );
@@ -522,7 +520,7 @@ describe("finalizeSetupWizard", () => {
       hasAuth: true,
     });
     resolveDefaultModelCatalogFacts.mockReset();
-    resolveDefaultModelCatalogFacts.mockReturnValue({ found: true });
+    resolveDefaultModelCatalogFacts.mockReturnValue({});
     loadModelCatalog.mockReset();
     loadModelCatalog.mockResolvedValue([]);
   });
@@ -847,7 +845,7 @@ describe("finalizeSetupWizard", () => {
       { api: "openai-responses" as const, baseUrl: "https://api.openai.com/v1" },
     ];
     loadModelCatalog.mockResolvedValueOnce(catalog);
-    resolveDefaultModelCatalogFacts.mockReturnValueOnce({ found: true, observedRoutes });
+    resolveDefaultModelCatalogFacts.mockReturnValueOnce({ observedRoutes });
     const prompter = buildWizardPrompter({
       confirm: vi.fn(async () => false),
     });
@@ -1601,8 +1599,6 @@ describe("finalizeSetupWizard", () => {
       });
       if (failure === "auth") {
         resolveGatewayInstallToken.mockImplementationOnce(async () => ({
-          token: undefined,
-          tokenRefConfigured: true,
           warnings: [],
           unavailableReason: "replacement auth unavailable",
         }));

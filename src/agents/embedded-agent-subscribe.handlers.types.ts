@@ -3,6 +3,7 @@
  * Message, tool, compaction, and liveness handlers all mutate this single
  * state shape while keeping their implementation files decoupled.
  */
+import type { AgentRunTimeoutPhase } from "@openclaw/normalization-core/agent-run-terminal-outcome";
 import type { InlineCodeState } from "../../packages/markdown-core/src/code-spans.js";
 import type { FenceScanState } from "../../packages/markdown-core/src/fences.js";
 import type { HeartbeatToolResponse } from "../auto-reply/heartbeat-tool-response.js";
@@ -31,7 +32,6 @@ import type {
 } from "./embedded-agent-utils.js";
 import type { McpConnectAction } from "./mcp-connect-action.js";
 import type { McpAppChannelView } from "./mcp-ui-resource.js";
-import type { AgentRunTimeoutPhase } from "./run-timeout-attribution.js";
 import type { AgentMessage } from "./runtime/index.js";
 import type { AgentSessionEvent } from "./sessions/index.js";
 import type { ToolErrorSummary } from "./tool-error-summary.js";
@@ -208,10 +208,7 @@ export type EmbeddedAgentSubscribeState = {
   messagingToolSourceReplyPayloads: MessagingToolSourceReplyPayload[];
   messageToolOnlySourceReplyDelivered: boolean;
   sourceReplyDelivered?: true;
-  pendingMessagingTexts: Map<string, string>;
-  pendingMessagingTargets: Map<string, MessagingToolSend>;
   successfulCronAdds: number;
-  pendingMessagingMediaUrls: Map<string, string[]>;
   pendingToolMediaUrls: string[];
   pendingToolMediaAttachments?: ReplyMediaAttachment[];
   /** Per-URL local-media trust; keys are normalized pending media URLs. */
@@ -242,7 +239,7 @@ export type EmbeddedAgentSubscribeContext = {
   hookRunner?: HookRunner;
   builtinToolNames?: ReadonlySet<string>;
   trustedLocalMediaToolNames?: ReadonlySet<string>;
-  noteLastAssistant: (msg: AgentMessage) => void;
+  noteLastAssistant: (msg: AgentMessage, options?: { hasToolResults: boolean }) => void;
 
   shouldEmitToolResult: () => boolean;
   shouldEmitToolOutput: () => boolean;
@@ -256,6 +253,7 @@ export type EmbeddedAgentSubscribeContext = {
   emitBlockChunk: (
     text: string,
     options?: {
+      sourceText?: string;
       assistantMessageIndex?: number;
       final?: boolean;
       finalReply?: ReplyDirectiveParseResult;
@@ -299,10 +297,14 @@ export type EmbeddedAgentSubscribeContext = {
   ) => void;
   emitBlockReply: (
     payload: BlockReplyPayload,
-    options?: { assistantMessageIndex?: number; consumePendingToolMedia?: boolean },
+    options?: {
+      assistantMessageIndex?: number;
+      consumePendingToolMedia?: boolean;
+      blockSourceText?: string;
+    },
   ) => void;
   flushAssistantStream: () => void;
-  flushDeferredBlockReplies: () => void;
+  releaseDeferredReplies: () => void;
   clearAssistantStream: () => void;
   clearDeferredBlockReplies: () => void;
 };
@@ -359,9 +361,6 @@ type ToolHandlerState = Pick<
   | "lastToolError"
   | "latestMcpAppChannelView"
   | "latestMcpConnectAction"
-  | "pendingMessagingTargets"
-  | "pendingMessagingTexts"
-  | "pendingMessagingMediaUrls"
   | "pendingToolMediaUrls"
   | "pendingToolMediaAttachments"
   | "pendingToolMediaTrustByUrl"

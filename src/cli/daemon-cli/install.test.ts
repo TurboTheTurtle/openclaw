@@ -1,6 +1,7 @@
 // Daemon install tests cover service install command behavior and plan handling.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockSystemAccountHome } from "../../daemon/service.test-helpers.js";
+import { nodeProbeOutput } from "./install.test-helpers.js";
 import {
   actionState,
   buildGatewayInstallPlanMock,
@@ -30,12 +31,15 @@ import {
   resolveSecretInputRefMock,
   resolveSecretRefValuesMock,
   runDaemonInstall,
+  runExecMock,
   service,
 } from "./install.test-support.js";
 
 describe("runDaemonInstall", () => {
   beforeEach(() => {
     loadConfigMock.mockReset();
+    runExecMock.mockReset();
+    runExecMock.mockResolvedValue(nodeProbeOutput("26.8.1"));
     resolveNodeStartupTlsEnvironmentMock.mockReset();
     readConfigFileSnapshotMock.mockReset();
     resolveGatewayPortMock.mockClear();
@@ -195,6 +199,26 @@ describe("runDaemonInstall", () => {
     ).toBe(true);
   });
 
+  it.each(["darwin", "win32"] as const)(
+    "refuses deferred activation on %s before writing configuration or service state",
+    async (platform) => {
+      vi.spyOn(process, "platform", "get").mockReturnValue(platform);
+      await runDaemonInstall({ json: true, force: true, deferActivation: true });
+      expect(actionState.failed.at(-1)?.message).toContain("Deferred service load requires Linux");
+      expect(replaceConfigFileMock).not.toHaveBeenCalled();
+      expect(service.install).not.toHaveBeenCalled();
+      expect(service.isLoaded).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses an unparented deferred install before reading or writing the selected profile", async () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    await runDaemonInstall({ json: true, force: true, deferActivation: true });
+    expect(actionState.failed.at(-1)?.message).toContain("updater IPC channel");
+    expect(readConfigFileSnapshotMock).not.toHaveBeenCalled();
+    expect(service.install).not.toHaveBeenCalled();
+  });
+
   it("passes service environment value sources through to service install", async () => {
     buildGatewayInstallPlanMock.mockResolvedValueOnce({
       programArguments: ["openclaw", "gateway", "run"],
@@ -279,7 +303,7 @@ describe("runDaemonInstall", () => {
     expect(actionState.failed).toStrictEqual([]);
     expect(replaceConfigFileMock).toHaveBeenCalledTimes(1);
     const writeParams = readFirstConfigWriteParams();
-    expect(writeParams.nextConfig?.gateway?.auth?.token).toBe("minted-token");
+    expect(writeParams.sourceConfig?.gateway?.auth?.token).toBe("minted-token");
     expectFields(readFirstInstallPlanArg(), { port: 18789 });
     expectFirstInstallPlanCallOmitsToken();
     expect(installDaemonServiceAndEmitMock).toHaveBeenCalledTimes(1);
@@ -315,7 +339,7 @@ describe("runDaemonInstall", () => {
 
     expect(actionState.failed).toStrictEqual([]);
     expect(replaceConfigFileMock).toHaveBeenCalledTimes(1);
-    expect(readFirstConfigWriteParams().nextConfig?.gateway?.mode).toBe("local");
+    expect(readFirstConfigWriteParams().sourceConfig?.gateway?.mode).toBe("local");
     expect(actionState.warnings).toContain(
       "No gateway.mode found. Set gateway.mode=local for managed gateway install.",
     );
@@ -602,6 +626,36 @@ describe("runDaemonInstall", () => {
       });
       expectFields(installPlanArg.env, existingCommand.environment);
       expect(installDaemonServiceAndEmitMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    { failure: "probe", message: "openclaw gateway install --force" },
+    { failure: "no-replacement", message: "No supported Node runtime is available" },
+    { failure: "sealed-definition", message: "SERVICE_DEFINITION_UNKNOWN" },
+  ])(
+    "refuses runtime repair on $failure without claiming success",
+    async ({ failure, message }) => {
+      service.isLoaded.mockResolvedValue(true);
+      const oldNode = failure === "probe" ? process.execPath : "/opt/old/bin/node";
+      service.readCommand.mockResolvedValue({
+        programArguments: [oldNode, "/opt/openclaw/dist/index.js", "gateway"],
+      });
+      runExecMock.mockImplementation(async (file: string) => {
+        if (failure === "probe") {
+          throw new Error("runtime probe timed out");
+        }
+        return nodeProbeOutput(
+          failure === "sealed-definition" && file !== oldNode ? "26.8.1" : "22.23.1",
+        );
+      });
+      if (failure === "sealed-definition") {
+        service.readDefinitionMutationCapability.mockRejectedValue(new Error("sealed"));
+      }
+      await runDaemonInstall({ json: true });
+      expect(actionState.failed[0]?.message).toContain(message);
+      expect(actionState.emitted).toEqual([]);
+      expect(installDaemonServiceAndEmitMock).not.toHaveBeenCalled();
     },
   );
 

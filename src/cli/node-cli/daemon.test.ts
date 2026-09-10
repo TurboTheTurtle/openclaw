@@ -643,7 +643,7 @@ describe("runNodeDaemonStatus", () => {
   });
 
   it("redacts service credentials from JSON status output", async () => {
-    mocks.service.readCommand.mockResolvedValue({
+    const command: GatewayServiceCommandConfig = {
       programArguments: ["node", "node-host"],
       environment: {
         OPENCLAW_PROFILE: "work",
@@ -655,7 +655,11 @@ describe("runNodeDaemonStatus", () => {
         environment: { OPENCLAW_GATEWAY_TOKEN: "managed-base-token" },
       },
       managedOverrides: { launcher: "command", environment: { keys: ["OPENCLAW_GATEWAY_TOKEN"] } },
-    });
+      definitionPaths: ["/etc/systemd/user/node-definition.conf"],
+      environmentValueSources: { OPENCLAW_PROFILE: "file" },
+      reloadPending: true,
+    };
+    mocks.service.readCommand.mockResolvedValue(command);
 
     await runNodeDaemonStatus({ json: true });
 
@@ -663,6 +667,9 @@ describe("runNodeDaemonStatus", () => {
       service: expect.objectContaining({
         command: expect.objectContaining({
           environment: { OPENCLAW_PROFILE: "work" },
+          definitionPaths: command.definitionPaths,
+          environmentValueSources: command.environmentValueSources,
+          reloadPending: true,
         }),
       }),
     });
@@ -672,5 +679,8 @@ describe("runNodeDaemonStatus", () => {
     expect(payload).not.toContain("managed-base-token");
     expect(payload).not.toContain("managedDefinition");
     expect(payload).not.toContain("managedOverrides");
+    expect(command.environment?.OPENCLAW_GATEWAY_TOKEN).toBe("gateway-token");
+    expect(command.managedDefinition).toBeDefined();
+    expect(command.managedOverrides).toBeDefined();
   });
 });
