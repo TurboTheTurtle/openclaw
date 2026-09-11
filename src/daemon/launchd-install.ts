@@ -37,6 +37,7 @@ import type {
   GatewayServiceManageArgs,
   GatewayServiceReadOptions,
 } from "./service-types.js";
+import { assertGatewayServiceUpdateCurrent } from "./service-update-authority.js";
 
 export async function uninstallLaunchAgent({
   env,
@@ -293,6 +294,7 @@ async function restoreLaunchAgentOwnedFile(params: {
   mode: number;
 }): Promise<void> {
   if (params.contents === null) {
+    assertGatewayServiceUpdateCurrent();
     await fs.unlink(params.path).catch((error: unknown) => {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
@@ -302,11 +304,14 @@ async function restoreLaunchAgentOwnedFile(params: {
   }
   const temporaryPath = `${params.path}.openclaw-${randomUUID()}.rollback`;
   try {
+    assertGatewayServiceUpdateCurrent();
     await fs.writeFile(temporaryPath, params.contents.toString("utf8"), {
       flag: "wx",
       mode: params.mode,
     });
+    assertGatewayServiceUpdateCurrent();
     await fs.rename(temporaryPath, params.path);
+    assertGatewayServiceUpdateCurrent();
     await fs.chmod(params.path, params.mode).catch(() => undefined);
   } finally {
     await fs.unlink(temporaryPath).catch(() => undefined);
@@ -337,6 +342,7 @@ async function restoreLaunchAgentInstallArtifacts(params: {
     });
   }
   if (params.snapshot.plistContents === null) {
+    assertGatewayServiceUpdateCurrent();
     await fs.unlink(params.plistPath).catch((error: unknown) => {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;

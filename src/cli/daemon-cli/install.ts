@@ -27,6 +27,10 @@ import {
   resolveManagedGatewayServiceCommand,
 } from "../../daemon/service-types.js";
 import {
+  assertGatewayServiceUpdateCurrent,
+  isUpdateOwnedGatewayServiceCommand,
+} from "../../daemon/service-update-authority.js";
+import {
   readGatewayServiceCommandForMutation,
   resolveGatewayService,
   type GatewayServiceCommandConfig,
@@ -373,6 +377,14 @@ export async function runDaemonInstall(opts: DaemonInstallOptions) {
       writeOptions: {
         baseSnapshot: configSnapshot,
         ...configWriteOptions,
+        ...(isUpdateOwnedGatewayServiceCommand()
+          ? {
+              beforeCommit: async () => {
+                await configWriteOptions.beforeCommit?.();
+                assertGatewayServiceUpdateCurrent();
+              },
+            }
+          : {}),
         skipRuntimeSnapshotRefresh: true,
       },
       afterWrite: { mode: "auto" },

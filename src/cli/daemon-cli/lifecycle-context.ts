@@ -51,6 +51,7 @@ export async function resolveGatewayConfigPorts() {
 export async function waitForGatewayUpdateRecovery(
   expectedVersion: string,
   expectedBuildId?: string,
+  timeoutMs?: number,
 ) {
   if (!expectedVersion?.trim()) {
     throw new Error("Recovery Gateway version is unavailable.");
@@ -63,6 +64,7 @@ export async function waitForGatewayUpdateRecovery(
     env,
     expectedVersion,
     expectedBuildId,
+    timeoutMs,
     requireRunningService: true,
     settle: { probes: 12 },
   });
