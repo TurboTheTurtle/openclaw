@@ -1,9 +1,15 @@
+import { adjustMaxTokensForThinking } from "@openclaw/ai/internal/shared";
 import {
   resolveClaudeFable5ModelIdentity,
+  supportsClaudeAdaptiveThinking,
   type Model,
   type SimpleStreamOptions,
   type StreamFn,
 } from "@openclaw/llm-core";
+import {
+  CHARS_PER_TOKEN_ESTIMATE,
+  estimateStringChars,
+} from "@openclaw/normalization-core/cjk-chars";
 import { resolveAgentReasoningOption } from "../../reasoning.js";
 import {
   type AgentCoreCompletionRuntimeDeps,
@@ -21,7 +27,11 @@ import {
   SummaryProviderError,
   type Result,
 } from "../types.js";
-import { createSummarizationContext } from "./summarization-prompts.js";
+import {
+  createSummarizationContext,
+  prepareSummaryRequest,
+  type SummaryRequestParams,
+} from "./summarization-prompts.js";
 import { extractSummaryText, serializeConversation } from "./utils.js";
 
 export interface SummarizationCompletionParams {
@@ -40,10 +50,9 @@ export interface SummarizationCompletionParams {
   errorLabel: string;
 }
 
-/** Runs one summarization completion and maps abort/error stops to CompactionError. */
-export async function runSummarizationCompletion(
-  params: SummarizationCompletionParams,
-): Promise<Result<string, CompactionError>> {
+function prepareSummarizationCompletion(
+  params: Omit<SummarizationCompletionParams, "streamFn" | "runtime" | "errorLabel">,
+) {
   const conversationText = serializeConversation(convertToLlm(params.messages));
   let promptText = `<conversation>\n${conversationText}\n</conversation>\n\n`;
   if (params.previousSummary) {
@@ -63,6 +72,55 @@ export async function runSummarizationCompletion(
   if ((model.reasoning || fableReasoning) && thinkingLevel) {
     options.reasoning = resolveAgentReasoningOption(model, thinkingLevel);
   }
+  return { context, options };
+}
+
+/** The completion owner supplies prompt overhead and its full output allowance. */
+export function getSummaryRequestBudget(params: SummaryRequestParams): {
+  overheadTokens: number;
+  outputTokens: number;
+} {
+  const request = { ...params, ...prepareSummaryRequest(params) };
+  const { context, options } = prepareSummarizationCompletion({
+    ...request,
+    messages: [],
+    apiKey: undefined,
+  });
+  const inputChars =
+    estimateStringChars(context.systemPrompt) +
+    context.messages.reduce(
+      (sum, message) =>
+        sum +
+        message.content.reduce(
+          (contentSum, block) => contentSum + estimateStringChars(block.text),
+          0,
+        ),
+      0,
+    );
+  const reasoning = options.reasoning;
+  const expandsThinking =
+    (params.model.api === "anthropic-messages" ||
+      params.model.api === "openclaw-anthropic-messages-transport" ||
+      params.model.api === "bedrock-converse-stream") &&
+    !supportsClaudeAdaptiveThinking(params.model);
+  // An injected stream can hide the transport. Keep the larger manual-thinking
+  // allowance, including max effort and the sub-minimum thinking fallback.
+  const outputTokens =
+    expandsThinking && reasoning && reasoning !== "off"
+      ? Math.max(
+          request.maxTokens,
+          adjustMaxTokensForThinking(request.maxTokens, params.model.maxTokens, reasoning)
+            .maxTokens,
+        )
+      : request.maxTokens;
+  return { overheadTokens: Math.ceil(inputChars / CHARS_PER_TOKEN_ESTIMATE), outputTokens };
+}
+
+/** Runs one summarization completion and maps abort/error stops to CompactionError. */
+export async function runSummarizationCompletion(
+  params: SummarizationCompletionParams,
+): Promise<Result<string, CompactionError>> {
+  const { context, options } = prepareSummarizationCompletion(params);
   const response = params.streamFn
     ? await consumeAgentCoreStream(params.streamFn(params.model, context, options), params.runtime)
     : await resolveAgentCoreCompleteFn(params.runtime)(params.model, context, options);

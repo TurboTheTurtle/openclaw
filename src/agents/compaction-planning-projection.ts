@@ -236,9 +236,6 @@ function projectMessage(message: AgentMessage, budget: ProjectionBudget): AgentM
       stopReason: message.stopReason,
       timestamp: message.timestamp,
     } as AgentMessage;
-  } else if (message.role === "bashExecution") {
-    const { fullOutputPath: _, ...rest } = message;
-    source = rest as AgentMessage;
   } else if (message.role === "compactionSummary" || message.role === "custom") {
     const { details: _, ...rest } = message;
     source = rest as AgentMessage;
@@ -250,7 +247,7 @@ function projectMessage(message: AgentMessage, budget: ProjectionBudget): AgentM
   if (!Array.isArray(content)) {
     switch (source.role) {
       case "bashExecution":
-        return projectStringFields(source, ["command", "output"], budget);
+        return projectStringFields(source, ["command", "output", "fullOutputPath"], budget);
       case "branchSummary":
       case "compactionSummary":
         return projectStringFields(source, ["summary"], budget);

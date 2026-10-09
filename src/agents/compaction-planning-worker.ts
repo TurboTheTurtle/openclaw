@@ -129,7 +129,7 @@ export async function buildStageSplitPlanWithWorker(
             mode: "split",
             chunks: value.chunkIndexes.map((indexes) => restoreIndexedMessages(messages, indexes)),
           }
-        : { mode: "single" },
+        : { mode: value.mode },
   });
 }
 

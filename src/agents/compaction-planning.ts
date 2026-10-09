@@ -1,4 +1,10 @@
+import {
+  CHARS_PER_TOKEN_ESTIMATE,
+  estimateStringChars,
+} from "@openclaw/normalization-core/cjk-chars";
 import { estimateTokens } from "../../packages/agent-core/src/harness/compaction/compaction.js";
+import { serializeConversation } from "../../packages/agent-core/src/harness/compaction/utils.js";
+import { convertToLlm } from "../../packages/agent-core/src/harness/messages.js";
 import { createToolCallOccurrenceQueue } from "../../packages/agent-core/src/harness/session/tool-result-pairing.js";
 import {
   projectCompactionPlanningMessages,
@@ -23,7 +29,7 @@ export const SUMMARIZATION_OVERHEAD_TOKENS = 4096;
 
 export type StageSplitPlan =
   | {
-      mode: "single";
+      mode: "single" | "whole";
     }
   | {
       mode: "split";
@@ -231,7 +237,23 @@ export function buildStageSplitPlan(params: {
   maxChunkTokens: number;
   parts?: number;
   minMessagesForSplit?: number;
+  requestBudget?: { contextWindow: number; overheadTokens: number; outputTokens: number };
 }): StageSplitPlan {
+  if (params.requestBudget) {
+    const { contextWindow, overheadTokens, outputTokens } = params.requestBudget;
+    const inputTokens = sanitizeCompactionMessages(params.messages).reduce((sum, message) => {
+      // Use the completion's rendered transcript, including role/tool wrappers.
+      // Projected worker inputs retain a conservative charge for omitted text.
+      const chars =
+        estimateStringChars(serializeConversation(convertToLlm([message]))) +
+        readCompactionPlanningOmittedChars(message) +
+        2;
+      return sum + Math.ceil(chars / CHARS_PER_TOKEN_ESTIMATE);
+    }, overheadTokens);
+    if (Math.ceil(inputTokens * SAFETY_MARGIN) + outputTokens <= contextWindow) {
+      return { mode: "whole" };
+    }
+  }
   const minMessagesForSplit = Math.max(2, params.minMessagesForSplit ?? 4);
   const parts = normalizeCompactionParts(params.parts ?? DEFAULT_PARTS, params.messages.length);
   if (parts <= 1 || params.messages.length < minMessagesForSplit) {
@@ -283,7 +305,7 @@ function pruneHistoryForContextShare(params: {
       minMessagesForSplit: 2,
       parts,
     });
-    if (splitPlan.mode === "single") {
+    if (splitPlan.mode !== "split") {
       break;
     }
     const dropped = splitPlan.chunks[0]!;

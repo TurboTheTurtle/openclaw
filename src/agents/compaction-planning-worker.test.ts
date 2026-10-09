@@ -397,6 +397,34 @@ describe("compaction planning worker", () => {
   });
 
   it.each([
+    { fullOutputPath: "/tmp/summary-output.txt", fits: true },
+    { fullOutputPath: `/tmp/${"output/".repeat(8_000)}`, fits: false },
+  ])(
+    "budgets rendered shell paths through worker projection (fits: $fits)",
+    async ({ fullOutputPath, fits }) => {
+      const plan = await buildStageSplitPlanWithWorker({
+        messages: [
+          ...Array.from({ length: 63 }, (_, index) => makeMessage(index, "acknowledged")),
+          {
+            role: "bashExecution",
+            command: "cat report.txt",
+            output: "report",
+            fullOutputPath,
+            exitCode: 0,
+            cancelled: false,
+            truncated: true,
+            timestamp: 64,
+          },
+        ],
+        maxChunkTokens: 2_000,
+        requestBudget: { contextWindow: 4_000, overheadTokens: 400, outputTokens: 800 },
+      });
+
+      expect(plan.mode === "whole").toBe(fits);
+    },
+  );
+
+  it.each([
     { kind: "oversizedFallback", messages: [makeMessage(1)], contextWindow: 1200 },
     { kind: "stageSplit", messages: [makeMessage(1)], maxChunkTokens: 1200 },
     { kind: "adaptiveChunkRatio", messages: [makeMessage(1)], contextWindow: 1200 },

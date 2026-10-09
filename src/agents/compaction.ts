@@ -1,3 +1,4 @@
+import { getSummaryRequestBudget } from "../../packages/agent-core/src/harness/compaction/compaction.js";
 import {
   CompactionError,
   SummaryOutputBudgetError,
@@ -13,8 +14,10 @@ import {
   buildStageSplitPlanWithWorker,
   buildSummaryChunksWithWorker,
 } from "./compaction-planning-worker.js";
+import { sanitizeCompactionMessages } from "./compaction-planning.js";
 import { DEFAULT_CONTEXT_TOKENS } from "./defaults.js";
 import { isTimeoutError } from "./failover-error.js";
+import { isLikelyContextOverflowError } from "./failover/classify.js";
 import type {
   AgentMessage,
   CompactionSummaryPrompt,
@@ -91,16 +94,18 @@ function buildCompactionSummarizationInstructions(
     : `Additional focus:\n${custom}`;
 }
 
-async function summarizeChunks(params: CompactionSummaryParams): Promise<string> {
+async function summarizeChunks(params: CompactionSummaryParams, whole = false): Promise<string> {
   if (params.messages.length === 0) {
     return params.previousSummary ?? DEFAULT_SUMMARY_FALLBACK;
   }
 
-  const chunks = await buildSummaryChunksWithWorker({
-    messages: params.messages,
-    maxChunkTokens: params.maxChunkTokens,
-    signal: params.signal,
-  });
+  const chunks = whole
+    ? [sanitizeCompactionMessages(params.messages)]
+    : await buildSummaryChunksWithWorker({
+        messages: params.messages,
+        maxChunkTokens: params.maxChunkTokens,
+        signal: params.signal,
+      });
   let summary = params.previousSummary;
   const effectiveInstructions = buildCompactionSummarizationInstructions(
     params.customInstructions,
@@ -138,6 +143,7 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
           shouldRetry: (err) =>
             !params.signal.aborted &&
             !(err instanceof SummaryOutputBudgetError) &&
+            !(whole && isLikelyContextOverflowError(formatErrorMessage(err))) &&
             (isAbortError(err) || !isTimeoutError(err)),
         },
       );
@@ -168,7 +174,10 @@ async function summarizeChunks(params: CompactionSummaryParams): Promise<string>
   return summary ?? DEFAULT_SUMMARY_FALLBACK;
 }
 
-async function summarizeWithFallback(params: CompactionSummaryParams): Promise<string> {
+async function summarizeWithFallback(
+  params: CompactionSummaryParams,
+  whole = false,
+): Promise<string> {
   const { messages, contextWindow } = params;
 
   let partialSummaryFallback: string | undefined;
@@ -185,8 +194,13 @@ async function summarizeWithFallback(params: CompactionSummaryParams): Promise<s
     }
   };
   try {
-    return await summarizeChunks(params);
+    return await summarizeChunks(params, whole);
   } catch (err) {
+    // A tokenizer underestimate must return to adaptive chunks without repeating
+    // the rejected whole request or dropping otherwise summarizable history.
+    if (whole && !params.signal.aborted && isLikelyContextOverflowError(formatErrorMessage(err))) {
+      throw err;
+    }
     recordFailure(err, "Full summarization failed");
   }
 
@@ -258,18 +272,47 @@ export async function summarizeInStages(
   },
 ): Promise<string> {
   const { messages } = params;
-  const plan =
+  const planningParams = {
+    messages,
+    maxChunkTokens: params.maxChunkTokens,
+    parts: params.parts,
+    minMessagesForSplit: params.minMessagesForSplit,
+    signal: params.signal,
+  };
+  let plan =
     messages.length === 0
       ? { mode: "single" as const }
       : await buildStageSplitPlanWithWorker({
-          messages,
-          maxChunkTokens: params.maxChunkTokens,
-          parts: params.parts,
-          minMessagesForSplit: params.minMessagesForSplit,
-          signal: params.signal,
+          ...planningParams,
+          requestBudget: {
+            contextWindow: Math.min(params.contextWindow, resolveContextWindowTokens(params.model)),
+            ...getSummaryRequestBudget({
+              ...params,
+              customInstructions: buildCompactionSummarizationInstructions(
+                params.customInstructions,
+                params.summarizationInstructions,
+              ),
+            }),
+          },
         });
 
-  if (plan.mode === "single") {
+  if (plan.mode === "whole") {
+    try {
+      return await summarizeWithFallback(params, true);
+    } catch (error) {
+      if (params.signal.aborted || !isLikelyContextOverflowError(formatErrorMessage(error))) {
+        throw error;
+      }
+      plan = await buildStageSplitPlanWithWorker(planningParams);
+      if (
+        plan.mode !== "split" &&
+        (await buildSummaryChunksWithWorker(planningParams)).length <= 1
+      ) {
+        throw error;
+      }
+    }
+  }
+  if (plan.mode !== "split") {
     return await summarizeWithFallback(params);
   }
 

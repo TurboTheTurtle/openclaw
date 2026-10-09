@@ -141,6 +141,11 @@ Bare configured aliases resolve to their canonical provider and model before com
 
 If Gateway configuration reloads while compaction is waiting to start, compaction uses the newly loaded context engine and model settings together. Its requested workspace and transcript stay the same.
 
+When the history, summary instructions, previous summary, and output allowance fit
+the summarizer's context window with estimation headroom, OpenClaw summarizes in
+one request. Larger histories use staged summaries. A provider-reported context
+overflow returns to chunked summarization.
+
 This works with local models too, for example a second Ollama model dedicated to summarization:
 
 ```json

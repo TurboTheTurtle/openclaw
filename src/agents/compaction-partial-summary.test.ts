@@ -57,6 +57,7 @@ describe("summarizeChunks partial summary preservation (#82952)", () => {
     maxTokens: 8192,
   } as unknown as NonNullable<ExtensionContext["model"]>;
 
+  // Prompt/output overhead prevents a whole request in the effective 1K window.
   // Two messages sized to split into two chunks with maxChunkTokens=150.
   // Each message is ~100 tokens (400 chars / 4), and effectiveMax = floor(150/1.2) = 125.
   const twoChunkMessages: AgentMessage[] = [
@@ -73,7 +74,7 @@ describe("summarizeChunks partial summary preservation (#82952)", () => {
       signal: new AbortController().signal,
       reserveTokens: 1000,
       maxChunkTokens: 150,
-      contextWindow: 200_000,
+      contextWindow: 1_000,
     });
   }
 
