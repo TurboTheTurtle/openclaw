@@ -62,6 +62,8 @@ describe("compaction identifier-preservation instructions", () => {
 
   it("avoids duplicate additional-focus headers in split+merge path", async () => {
     await runSummary(4, {
+      // Include prompt/output overhead so this exercises the staged path.
+      contextWindow: 5_000,
       maxChunkTokens: 1000,
       parts: 2,
       minMessagesForSplit: 4,
@@ -131,6 +133,7 @@ describe("compaction identifier policy", () => {
 describe("compaction staged summarization failures", () => {
   const runStagedSummary = () =>
     runSummary(6, {
+      contextWindow: 5_000,
       maxChunkTokens: 1000,
       parts: 3,
       minMessagesForSplit: 2,
